@@ -1,0 +1,4 @@
+project_id = "soulsync-ai"
+
+[db]
+port = 54322
