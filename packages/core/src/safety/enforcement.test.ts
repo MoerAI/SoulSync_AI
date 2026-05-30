@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -99,7 +100,7 @@ describe("match_candidate_profiles block enforcement", () => {
 
 describe("policy documents", () => {
   test("ship privacy, AI, synthetic-profile, and retention policies with a data-class table and no-training default", () => {
-    const policyDir = join(process.cwd(), "content/policies");
+    const policyDir = join(dirname(fileURLToPath(import.meta.url)), "../../../../content/policies");
     const files = ["privacy-policy.md", "ai-disclosure.md", "synthetic-profile-policy.md", "retention-deletion.md"];
 
     for (const file of files) {
