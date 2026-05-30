@@ -1,1 +1,15 @@
-{"$schema":"https://openapi.vercel.sh/vercel.json","fluid":true,"crons":[{"path":"/api/cron/process-match-jobs","schedule":"* * * * *"}]}
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "fluid": true,
+  "crons": [
+    {
+      "path": "/api/cron/process-match-jobs",
+      "schedule": "* * * * *"
+    }
+  ],
+  "functions": {
+    "apps/web/app/api/cron/process-match-jobs/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}
