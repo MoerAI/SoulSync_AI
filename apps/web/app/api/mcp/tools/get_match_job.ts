@@ -1,3 +1,4 @@
+import { serializeMatchJob } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
@@ -27,7 +28,7 @@ export async function getMatchJob(input: { jobId: string }): Promise<ToolRespons
 
   const status = stringValue(data.status) ?? "unknown";
 
-  return ok({ jobId: data.id, status, progress: data.progress ?? 0 }, `Match job is ${status}.`, {
+  return ok(serializeMatchJob({ jobId: data.id, status, progress: data.progress ?? 0 }), `Match job is ${status}.`, {
     job: { id: data.id, status, progress: data.progress ?? 0 },
   });
 }

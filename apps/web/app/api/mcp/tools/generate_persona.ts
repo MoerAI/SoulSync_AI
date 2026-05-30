@@ -1,4 +1,5 @@
 import { generatePersona as coreGeneratePersona, type PersonaConsent } from "@soulsync/core/src/persona/index";
+import { serializePersona } from "@soulsync/core/src/serializers";
 import type { Profile } from "@soulsync/core/src/types/index";
 import { z } from "zod";
 
@@ -39,9 +40,9 @@ export async function generatePersona(input: { consent?: PersonaConsent } = {}):
     rowError("Unable to save generated persona");
   }
 
-  return ok({ persona: safePersona(persona) }, "Persona generated.", {
+  return ok({ persona: serializePersona(persona) }, "Persona generated.", {
     persona: {
-      ...safePersona(persona),
+      ...serializePersona(persona),
       allowedTalkingPoints: persona.allowedTalkingPoints,
       forbiddenTopics: persona.forbiddenTopics,
     },
@@ -79,19 +80,4 @@ function normalizeAnswer(answer: unknown): string | number | boolean | string[] 
   }
 
   return JSON.stringify(answer ?? "");
-}
-
-function safePersona(persona: Awaited<ReturnType<typeof coreGeneratePersona>>): Record<string, unknown> {
-  return {
-    id: persona.id,
-    displayName: persona.displayName,
-    ageRange: persona.ageRange,
-    city: persona.city,
-    mbti: persona.mbti,
-    values: persona.values,
-    interests: persona.interests,
-    communicationStyle: persona.communicationStyle,
-    boundaries: persona.boundaries,
-    is_synthetic: persona.is_synthetic,
-  };
 }

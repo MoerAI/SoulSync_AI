@@ -1,3 +1,4 @@
+import { serializeRecommendation, serializeRecommendations } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
@@ -21,22 +22,14 @@ export type RecommendationRow = {
 };
 
 export function toRecommendationResponse(rows: RecommendationRow[]): ToolResponse {
-  const recommendations = rows.map((row) => ({
-    id: row.id,
-    jobId: row.job_id,
-    candidateId: row.candidate_id,
-    rank: row.rank ?? 0,
-    overall: typeof row.overall === "number" ? row.overall : Number(row.overall ?? 0),
-    summary: row.summary_ko ?? "",
-    is_synthetic: Boolean(row.is_synthetic),
-  }));
+  const structuredContent = serializeRecommendations(rows);
 
-  return ok({ count: recommendations.length, recommendations }, `${recommendations.length} recommendations found.`, {
+  return ok(structuredContent, `${structuredContent.count} recommendations found.`, {
     recommendations: rows.map((row) => ({
       id: row.id,
       candidateId: row.candidate_id,
       rank: row.rank ?? 0,
-      subscores: row.subscores ?? null,
+      subscores: serializeRecommendation(row).subscores,
     })),
   });
 }

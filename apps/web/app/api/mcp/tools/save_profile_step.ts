@@ -1,3 +1,4 @@
+import { serializeProfileStep } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
@@ -39,7 +40,7 @@ export async function saveProfileStep(input: { step: string; data: Record<string
     }
   }
 
-  return ok({ step: input.step, saved: true }, "Profile step saved.");
+  return ok(serializeProfileStep({ step: input.step }), "Profile step saved.");
 }
 
 function profilePatchFrom(data: Record<string, unknown>): Record<string, unknown> {

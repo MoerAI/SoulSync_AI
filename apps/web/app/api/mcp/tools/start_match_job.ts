@@ -1,6 +1,7 @@
 import { enqueueMatchJob as coreEnqueueMatchJob } from "@soulsync/core/src/jobs/enqueue";
 import type { McpActor } from "@soulsync/core/src/identity/index";
 import type { SupabaseLike } from "@soulsync/core/src/jobs/pipeline";
+import { serializeMatchJob } from "@soulsync/core/src/serializers";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
 import { actorFor, ok, requireScope, type ToolResponse } from "./common";
@@ -13,7 +14,7 @@ type Deps = {
 export async function startMatchJobTool(actor: McpActor, client: SupabaseLike, deps: Deps = {}): Promise<ToolResponse> {
   const jobId = await (deps.enqueueMatchJob ?? coreEnqueueMatchJob)(actor, client);
 
-  return ok({ jobId, status: "queued" }, "Match job queued.");
+  return ok(serializeMatchJob({ jobId, status: "queued" }), "Match job queued.");
 }
 
 export async function startMatchJob(): Promise<ToolResponse> {

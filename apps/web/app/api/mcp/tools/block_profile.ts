@@ -1,3 +1,5 @@
+import { blockProfile as coreBlockProfile } from "@soulsync/core/src/safety/enforcement";
+import { serializeBlock } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
@@ -13,15 +15,11 @@ export async function blockProfile(input: { profileId: string; idempotencyKey?: 
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
-  const { data, error } = await getServiceSupabase()
-    .from("blocks")
-    .upsert({ blocker_id: actor.appUserId, blocked_id: input.profileId }, { onConflict: "blocker_id,blocked_id" })
-    .select("id")
-    .single<{ id: string }>();
+  const result = await coreBlockProfile({ blockerId: actor.appUserId, blockedId: input.profileId }, getServiceSupabase() as never).catch(() => null);
 
-  if (error || !data) {
+  if (!result) {
     rowError("Unable to block profile");
   }
 
-  return ok({ blockId: data.id, blockedProfileId: input.profileId }, "Profile blocked.");
+  return ok(serializeBlock({ blockId: result.id, blockedProfileId: input.profileId }), "Profile blocked.");
 }

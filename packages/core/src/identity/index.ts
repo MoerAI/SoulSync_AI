@@ -93,6 +93,16 @@ export type McpActor = Actor & {
   scopes: string[];
 };
 
+export type SupabaseJwtIdentityClient = {
+  findAppUserBySupabaseUserId(supabaseUserId: string): Promise<StoredAppUser | null>;
+};
+
+export type ActorFromSupabaseJwtOptions = {
+  issuer?: string;
+  audience?: string;
+  jwtSecret?: string;
+};
+
 export type WithMcpAuthOptions = VerifyOAuthAccessTokenOptions & {
   required?: boolean;
   resourceMetadataPath?: string;
@@ -201,6 +211,40 @@ export const actorFromClaims = (claims: OAuthAccessTokenClaims, appUserId = clai
     id: appUserId,
     appUserId,
     scopes: [...claims.scopes],
+  };
+};
+
+export const actorFromSupabaseJwt = async (request: Request, client: SupabaseJwtIdentityClient, options: ActorFromSupabaseJwtOptions = {}): Promise<McpActor> => {
+  const token = bearerToken(request.headers.get("authorization"));
+  if (!token) {
+    throw new OAuthAccessTokenError("invalid_token", "No authorization provided");
+  }
+
+  const jwtSecret = options.jwtSecret ?? readEnv("SUPABASE_JWT_SECRET");
+  const issuer = options.issuer ?? supabaseIssuer();
+  const audience = options.audience ?? readEnv("SUPABASE_JWT_AUDIENCE") ?? "authenticated";
+  if (!jwtSecret) {
+    throw new OAuthAccessTokenError("server_error", "SUPABASE_JWT_SECRET must be configured", 500);
+  }
+
+  let payload: JWTPayload;
+  try {
+    payload = (await jwtVerify(token, new TextEncoder().encode(jwtSecret), { issuer, audience })).payload;
+  } catch {
+    throw new OAuthAccessTokenError("invalid_token", "Invalid Supabase Auth token");
+  }
+
+  const supabaseUserId = readStringClaim(payload, "sub");
+  const appUser = await client.findAppUserBySupabaseUserId(supabaseUserId);
+  if (!appUser) {
+    throw new OAuthAccessTokenError("invalid_token", "Supabase identity is not linked to an app user");
+  }
+
+  return {
+    source: "mobile",
+    id: appUser.id,
+    appUserId: appUser.id,
+    scopes: ["profile.read", "profile.write", "match.run"],
   };
 };
 
@@ -383,6 +427,16 @@ const readEnv = (key: string): string | undefined => {
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 
   return env?.[key];
+};
+
+const supabaseIssuer = (): string | undefined => {
+  const configured = readEnv("SUPABASE_JWT_ISSUER");
+  if (configured) {
+    return configured;
+  }
+  const url = readEnv("SUPABASE_URL");
+
+  return url ? `${url.replace(/\/$/u, "")}/auth/v1` : undefined;
 };
 
 const isLocalStubIssuer = (issuer: string): boolean => {

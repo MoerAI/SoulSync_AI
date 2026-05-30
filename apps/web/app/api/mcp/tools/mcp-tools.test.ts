@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { serializeRecommendations } from "@soulsync/core/src/serializers";
 import { startMatchJobTool } from "./start_match_job";
 import { toRecommendationResponse } from "./list_recommendations";
 
@@ -30,20 +31,20 @@ describe("MCP tool adapters", () => {
       },
     ]);
 
-    expect(response.structuredContent).toEqual({
-      count: 1,
-      recommendations: [
+    expect(response.structuredContent).toEqual(
+      serializeRecommendations([
         {
           id: "rec-1",
-          jobId: "job-1",
-          candidateId: "candidate-1",
+          job_id: "job-1",
+          candidate_id: "candidate-1",
           rank: 1,
           overall: 91,
-          summary: "대화 흐름이 좋습니다.",
+          summary_ko: "대화 흐름이 좋습니다.",
           is_synthetic: true,
+          subscores: { raw_transcript: "secret transcript", salary: "1억", exact_district: "강남구" },
         },
-      ],
-    });
+      ]),
+    );
     expect(JSON.stringify(response.structuredContent)).not.toMatch(/salary|district|transcript|secret/i);
     expect(response._meta).toEqual({
       recommendations: [
@@ -51,7 +52,7 @@ describe("MCP tool adapters", () => {
           id: "rec-1",
           candidateId: "candidate-1",
           rank: 1,
-          subscores: { raw_transcript: "secret transcript", salary: "1억", exact_district: "강남구" },
+          subscores: {},
         },
       ],
     });

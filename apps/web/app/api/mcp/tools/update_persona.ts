@@ -1,4 +1,5 @@
 import { updatePersona as coreUpdatePersona, type PersonaTalkingPoints } from "@soulsync/core/src/persona/index";
+import { serializePersona } from "@soulsync/core/src/serializers";
 import type { PersonaSpec } from "@soulsync/core/src/types/index";
 import { z } from "zod";
 
@@ -35,7 +36,7 @@ export async function updatePersona(input: { updates: Partial<PersonaSpec> & Par
     rowError("Unable to update persona");
   }
 
-  return ok({ persona: { id: persona.id, displayName: persona.displayName, city: persona.city, interests: persona.interests, is_synthetic: persona.is_synthetic } }, "Persona updated.", {
+  return ok({ persona: serializePersona(persona) }, "Persona updated.", {
     persona: {
       ...persona,
       allowedTalkingPoints: persona.allowedTalkingPoints,

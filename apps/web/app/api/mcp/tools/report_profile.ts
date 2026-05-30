@@ -1,3 +1,5 @@
+import { reportProfile as coreReportProfile } from "@soulsync/core/src/safety/enforcement";
+import { serializeReport } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
@@ -14,11 +16,11 @@ export async function reportProfile(input: { profileId: string; reason: string; 
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
-  const { data, error } = await getServiceSupabase().from("reports").insert({ reporter_id: actor.appUserId, reported_id: input.profileId, reason: input.reason }).select("id").single<{ id: string }>();
+  const result = await coreReportProfile({ reporterId: actor.appUserId, reportedId: input.profileId, reason: input.reason }, getServiceSupabase() as never).catch(() => null);
 
-  if (error || !data) {
+  if (!result) {
     rowError("Unable to report profile");
   }
 
-  return ok({ reportId: data.id, reported: true }, "Profile reported.");
+  return ok(serializeReport({ reportId: result.id }), "Profile reported.");
 }

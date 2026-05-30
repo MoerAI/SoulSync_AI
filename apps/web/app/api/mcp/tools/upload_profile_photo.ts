@@ -1,3 +1,4 @@
+import { serializePhotoUpload } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
@@ -41,7 +42,7 @@ export async function uploadProfilePhoto(input: { file: { file_id: string; downl
     rowError("Unable to save profile photo");
   }
 
-  return ok({ photoId: data.id, status: "pending" }, "Profile photo uploaded.", { photo: { id: data.id, bucket: "profile-private", path } });
+  return ok(serializePhotoUpload({ photoId: data.id }), "Profile photo uploaded.", { photo: { id: data.id, bucket: "profile-private", path } });
 }
 
 function sanitizeFileName(fileName: string): string {

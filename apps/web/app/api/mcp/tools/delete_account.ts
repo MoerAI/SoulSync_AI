@@ -1,3 +1,5 @@
+import { deleteAccount as coreDeleteAccount } from "@soulsync/core/src/safety/enforcement";
+import { serializeDeleteAccount } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
@@ -14,11 +16,13 @@ export async function deleteAccount(input: { confirm: "DELETE"; idempotencyKey?:
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
-  const { error } = await getServiceSupabase().from("app_users").delete().eq("id", actor.appUserId);
+  const deleted = await coreDeleteAccount(actor.appUserId, getServiceSupabase() as never)
+    .then(() => true)
+    .catch(() => false);
 
-  if (error) {
+  if (!deleted) {
     rowError("Unable to delete account");
   }
 
-  return ok({ deleted: true }, "Account deleted.");
+  return ok(serializeDeleteAccount(), "Account deleted.");
 }
