@@ -121,11 +121,11 @@ const passesStageFilters = (user: FunnelUser, candidate: FunnelCandidate, opts: 
     return false;
   }
 
-  if (!passesReligion(user.religion, candidate.persona.values?.religion, opts.religionThreshold ?? DEFAULT_RELIGION_THRESHOLD, state.intensityTolerance)) {
+  if (!stageTwoFullyRelaxed(state) && !passesReligion(user.religion, candidate.persona.values?.religion, opts.religionThreshold ?? DEFAULT_RELIGION_THRESHOLD, state.intensityTolerance)) {
     return false;
   }
 
-  if (!passesValues(user.values, candidate.persona.values, opts, opts.valuesThreshold ?? DEFAULT_VALUES_THRESHOLD)) {
+  if (!stageTwoFullyRelaxed(state) && !passesValues(user.values, candidate.persona.values, opts, opts.valuesThreshold ?? DEFAULT_VALUES_THRESHOLD)) {
     return false;
   }
 
@@ -149,6 +149,8 @@ const passesMbti = (user: FunnelUser, candidate: FunnelCandidate, threshold: num
 
   return passesMbtiFilter(user.mbti, candidate.persona.mbti, threshold);
 };
+
+const stageTwoFullyRelaxed = (state: RelaxationState): boolean => state.intensityTolerance >= 4 && state.locationMode === "any";
 
 const passesReligion = (userReligion: ReligionProfile | undefined, candidateReligion: ReligionProfile | undefined, threshold: number, intensityTolerance: number): boolean => {
   if (!userReligion || !candidateReligion) {

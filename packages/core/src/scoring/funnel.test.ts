@@ -91,6 +91,7 @@ describe("funnel", () => {
     expect(result.candidates).toHaveLength(3);
     expect(result.fallbackTrace).toContain("mbti_relaxed");
     expect(result.fallbackTrace).toContain("synthetic_supplemented");
+    expect(result.candidates.some((item) => item.id === "needs-relax")).toBe(true);
     expect(result.candidates.filter((item) => item.persona.is_synthetic).length).toBeGreaterThan(0);
   });
 
