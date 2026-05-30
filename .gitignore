@@ -6,3 +6,5 @@ dist
 coverage
 .next
 .omo
+supabase/.branches
+supabase/.temp
