@@ -8,11 +8,12 @@ export default defineConfig({
     lib: {
       entry: {
         index: "src/index.ts",
-        "profile-form": "src/profile-form/index.tsx"
+        "profile-form": "src/profile-form/index.tsx",
+        recommendations: "src/recommendations/index.tsx",
+        "match-status": "src/match-status/index.tsx"
       },
       formats: ["es", "cjs"],
-      fileName: (format, entryName) => `${entryName}.${format}.js`,
-      cssFileName: "profile-form"
+      fileName: (format, entryName) => `${entryName}.${format}.js`
     },
     rollupOptions: {
       external: (id) =>
