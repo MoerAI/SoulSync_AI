@@ -6,10 +6,13 @@ export default defineConfig({
   build: {
     cssCodeSplit: true,
     lib: {
-      entry: "src/index.ts",
+      entry: {
+        index: "src/index.ts",
+        "profile-form": "src/profile-form/index.tsx"
+      },
       formats: ["es", "cjs"],
-      fileName: (format) => `index.${format}.js`,
-      cssFileName: "index"
+      fileName: (format, entryName) => `${entryName}.${format}.js`,
+      cssFileName: "profile-form"
     },
     rollupOptions: {
       external: (id) =>
