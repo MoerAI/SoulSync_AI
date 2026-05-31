@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTPayload } from "jose";
 
 import type { Actor } from "../types";
 
@@ -42,7 +42,21 @@ export type VerifyOAuthAccessTokenOptions = {
   audience?: string;
   requiredScopes?: readonly string[];
   jwksUrl?: string;
+  asSecret?: string;
   stubSecret?: string;
+};
+
+export type IssueOAuthAccessTokenInput = {
+  subject: string;
+  appUserId: string;
+  scopes: readonly string[];
+  issuer?: string;
+  audience?: string;
+  secret?: string;
+  email?: string;
+  name?: string;
+  expiresInSeconds?: number;
+  issuedAt?: number;
 };
 
 export type StoredAppUser = {
@@ -109,6 +123,33 @@ export type WithMcpAuthOptions = VerifyOAuthAccessTokenOptions & {
   resourceUrl?: string;
 };
 
+export const issueOAuthAccessToken = async (input: IssueOAuthAccessTokenInput): Promise<string> => {
+  const issuer = input.issuer ?? readEnv("OAUTH_ISSUER");
+  const audience = input.audience ?? readEnv("OAUTH_AUDIENCE");
+  const secret = input.secret ?? readEnv("OAUTH_AS_JWT_SECRET");
+
+  if (!issuer || !audience || !secret) {
+    throw new OAuthAccessTokenError("server_error", "OAUTH_ISSUER, OAUTH_AUDIENCE, and OAUTH_AS_JWT_SECRET must be configured", 500);
+  }
+
+  const now = input.issuedAt ?? Math.floor(Date.now() / 1000);
+  const expiresInSeconds = input.expiresInSeconds ?? 3600;
+
+  return new SignJWT({
+    scope: [...input.scopes].join(" "),
+    app_user_id: input.appUserId,
+    email: input.email ? normalizeEmail(input.email) : undefined,
+    name: input.name,
+  })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer(issuer)
+    .setAudience(audience)
+    .setSubject(input.subject)
+    .setIssuedAt(now)
+    .setExpirationTime(now + expiresInSeconds)
+    .sign(new TextEncoder().encode(secret));
+};
+
 export const verifyOAuthAccessToken = async (token: string, options: VerifyOAuthAccessTokenOptions = {}): Promise<OAuthAccessTokenClaims> => {
   const issuer = options.issuer ?? readEnv("OAUTH_ISSUER");
   const audience = options.audience ?? readEnv("OAUTH_AUDIENCE");
@@ -149,6 +190,7 @@ export const verifyOAuthAccessToken = async (token: string, options: VerifyOAuth
     scopes,
     email: typeof payload.email === "string" ? normalizeEmail(payload.email) : undefined,
     name: typeof payload.name === "string" ? payload.name : undefined,
+    appUserId: readOptionalStringClaim(payload, "app_user_id") ?? readOptionalStringClaim(payload, "appUserId"),
     raw: payload,
   };
 };
@@ -289,6 +331,11 @@ export const withMcpAuth = (
 };
 
 const verifyJwt = async (token: string, issuer: string, audience: string, options: VerifyOAuthAccessTokenOptions) => {
+  const asSecret = options.asSecret ?? readEnv("OAUTH_AS_JWT_SECRET");
+  if (asSecret) {
+    return jwtVerify(token, new TextEncoder().encode(asSecret), { issuer, audience });
+  }
+
   if (isLocalStubIssuer(issuer)) {
     const secret = options.stubSecret ?? readEnv("OAUTH_STUB_JWT_SECRET");
 
@@ -352,6 +399,12 @@ const readNumberClaim = (payload: JWTPayload, claim: "exp"): number => {
   }
 
   return value;
+};
+
+const readOptionalStringClaim = (payload: JWTPayload, claim: "app_user_id" | "appUserId"): string | undefined => {
+  const value = payload[claim];
+
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
 const readScopes = (payload: JWTPayload): string[] => {

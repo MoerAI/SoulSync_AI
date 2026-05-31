@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import {
   actorFromClaims,
+  issueOAuthAccessToken,
   resolveOrCreateAppUser,
   verifyOAuthAccessToken,
   type IdentityClient,
@@ -22,6 +23,7 @@ const testRun = `task15-${randomUUID()}`;
 const originalEnv = {
   issuer: process.env.OAUTH_ISSUER,
   audience: process.env.OAUTH_AUDIENCE,
+  asSecret: process.env.OAUTH_AS_JWT_SECRET,
   secret: process.env.OAUTH_STUB_JWT_SECRET,
 };
 
@@ -37,7 +39,65 @@ describe("OAuth access token identity linking", () => {
     cleanupTestRows();
     restoreEnv("OAUTH_ISSUER", originalEnv.issuer);
     restoreEnv("OAUTH_AUDIENCE", originalEnv.audience);
+    restoreEnv("OAUTH_AS_JWT_SECRET", originalEnv.asSecret);
     restoreEnv("OAUTH_STUB_JWT_SECRET", originalEnv.secret);
+  });
+
+  test("first-party authorization server token verifies with app user claims", async () => {
+    const issuer = "http://localhost:3004";
+    const asSecret = "soulsync-oauth-as-test-secret-with-enough-entropy";
+    const appUserId = "99000000-0000-0000-0000-000000000777";
+
+    const token = await issueOAuthAccessToken({
+      subject: `${testRun}:supabase-user`,
+      appUserId,
+      email: `${testRun}-as@example.test`,
+      name: "AS User",
+      scopes: ["profile.read", "match.run"],
+      issuer,
+      audience,
+      secret: asSecret,
+      expiresInSeconds: 3600,
+    });
+    const claims = await verifyOAuthAccessToken(token, { issuer, audience, asSecret, requiredScopes: ["profile.read", "match.run"] });
+    const actor = actorFromClaims(claims);
+
+    expect(claims).toMatchObject({
+      iss: issuer,
+      aud: audience,
+      sub: `${testRun}:supabase-user`,
+      appUserId,
+      email: `${testRun}-as@example.test`,
+      name: "AS User",
+      scopes: ["profile.read", "match.run"],
+    });
+    expect(actor).toMatchObject({ source: "mcp", id: appUserId, appUserId, scopes: ["profile.read", "match.run"] });
+  });
+
+  test("first-party authorization server token rejects wrong audience and expiry", async () => {
+    const issuer = "http://localhost:3004";
+    const asSecret = "soulsync-oauth-as-test-secret-with-enough-entropy";
+
+    const wrongAudience = await issueOAuthAccessToken({
+      subject: `${testRun}:as-wrong-aud`,
+      appUserId: "99000000-0000-0000-0000-000000000778",
+      scopes: ["profile.read"],
+      issuer,
+      secret: asSecret,
+      audience: "http://localhost:3000/not-mcp",
+    });
+    const expired = await issueOAuthAccessToken({
+      subject: `${testRun}:as-expired`,
+      appUserId: "99000000-0000-0000-0000-000000000779",
+      scopes: ["profile.read"],
+      issuer,
+      audience,
+      secret: asSecret,
+      expiresInSeconds: -60,
+    });
+
+    await expect(verifyOAuthAccessToken(wrongAudience, { issuer, audience, asSecret })).rejects.toMatchObject({ code: "invalid_token" });
+    await expect(verifyOAuthAccessToken(expired, { issuer, audience, asSecret })).rejects.toMatchObject({ code: "invalid_token" });
   });
 
   test("valid local stub token resolves to an app user and creates identity rows", async () => {
