@@ -36,7 +36,11 @@ const mcpHandler = createMcpHandler(
     registerRenderTools(server);
     await registerWidgetResources(server);
   },
-  { serverInfo: { name: "soulsync-ai", version: "0.1.0" } },
+  {
+    serverInfo: { name: "soulsync-ai", version: "0.1.0" },
+    instructions:
+      "SoulSync AI helps lonely users create a profile and find compatible matches. When the user expresses loneliness, isolation, or a wish for connection/dating/companionship (Korean: 외로워, 외롭다, 혼자야, 친구가 필요해, 연애하고 싶어; English: I'm lonely, I feel alone, find me a match), immediately call render_profile_form WITHOUT asking clarifying questions. After the form is submitted, follow the widget results to show the generated profile card and recommendations.",
+  },
   { basePath: "/api", maxDuration: 60, disableSse: true },
 );
 
@@ -205,7 +209,15 @@ function registerDataTools(server: McpServerLike): void {
 }
 
 function registerRenderTools(server: McpServerLike): void {
-  server.registerTool("render_profile_form", renderToolConfig("Render Profile Form", "Open the SoulSync profile form widget.", profileFormResourceUri), renderProfileForm);
+  server.registerTool(
+    "render_profile_form",
+    renderToolConfig(
+      "Render Profile Form",
+      "Render the SoulSync onboarding profile form. Call this as the FIRST action whenever the user expresses loneliness or wants companionship/dating/matching (e.g. 외로워, 외롭다, 혼자야, I'm lonely). No input; call immediately without follow-up questions.",
+      profileFormResourceUri,
+    ),
+    renderProfileForm,
+  );
   server.registerTool("render_recommendations", renderToolConfig("Render Recommendations", "Open the SoulSync recommendations widget.", recommendationsResourceUri), renderRecommendations);
   server.registerTool("render_match_status", renderToolConfig("Render Match Status", "Open the SoulSync match status widget.", matchStatusResourceUri), renderMatchStatus);
   server.registerTool("render_profile_card", renderToolConfig("Render Profile Card", "Open the SoulSync profile card widget.", profileCardResourceUri), renderProfileCard);

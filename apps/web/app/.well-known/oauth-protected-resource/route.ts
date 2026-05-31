@@ -11,6 +11,10 @@ const metadataHandler = protectedResourceHandler({
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request): Promise<Response> {
+  if (readEnv("DEMO_NOAUTH") === "1") {
+    return new Response(null, { status: 404 });
+  }
+
   const response = metadataHandler(request);
   const metadata = (await response.json()) as Record<string, unknown>;
   const headers = new Headers(response.headers);

@@ -10,6 +10,7 @@ vi.mock("../../lib/supabase", () => ({
 }));
 
 import { GET as getAuthorizationServerMetadata } from "../.well-known/oauth-authorization-server/route";
+import { GET as getProtectedResourceMetadata } from "../.well-known/oauth-protected-resource/route";
 import { GET as authorize } from "./authorize/route";
 import { resetOAuthServerState } from "./lib";
 import { POST as registerClient } from "./register/route";
@@ -51,6 +52,28 @@ describe("OAuth authorization server routes", () => {
       grant_types_supported: ["authorization_code"],
       code_challenge_methods_supported: ["S256"],
     });
+  });
+
+  test("protected-resource metadata advertises OAuth by default", async () => {
+    const response = await getProtectedResourceMetadata(new Request(`${issuer}/.well-known/oauth-protected-resource`));
+    const metadata = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(metadata).toMatchObject({
+      resource: issuer,
+      authorization_servers: ["http://localhost:8787/oauth-stub"],
+      scopes_supported: ["profile.read", "profile.write", "match.run"],
+      bearer_methods_supported: ["header"],
+    });
+  });
+
+  test("DEMO_NOAUTH hides protected-resource OAuth metadata so clients call tools without OAuth discovery", async () => {
+    vi.stubEnv("DEMO_NOAUTH", "1");
+
+    const response = await getProtectedResourceMetadata(new Request(`${issuer}/.well-known/oauth-protected-resource`));
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("");
   });
 
   test("dynamic client registration returns a client_id", async () => {

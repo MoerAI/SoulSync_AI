@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { McpActor } from "@soulsync/core/src/identity/index";
 import type { SupabaseLike } from "@soulsync/core/src/jobs/pipeline";
@@ -16,6 +16,11 @@ const unusedClient: SupabaseLike = {
 };
 
 describe("MCP tool adapters", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
   test("start_match_job enqueues and returns a queued job without running the pipeline", async () => {
     const startMatchJob = vi.fn().mockResolvedValue({ jobId: "job-123", status: "queued" });
     const response = await startMatchJobTool(
@@ -26,6 +31,52 @@ describe("MCP tool adapters", () => {
 
     expect(startMatchJob).toHaveBeenCalledOnce();
     expect(response.structuredContent).toEqual({ jobId: "job-123", status: "queued" });
+  });
+
+  test("start_match_job runs the job synchronously when DEMO_INSTANT_MATCH is enabled", async () => {
+    vi.stubEnv("DEMO_INSTANT_MATCH", "1");
+    const startMatchJob = vi.fn().mockResolvedValue({ jobId: "job-123", status: "queued" });
+    const runMatchJobInstant = vi.fn().mockResolvedValue({ jobId: "job-123", status: "succeeded", recommendations: [], fallbackTrace: [], candidateStatuses: [] });
+
+    const response = await startMatchJobTool(
+      { source: "mcp", id: "user-123", appUserId: "user-123", scopes: ["match.run"] },
+      unusedClient,
+      { startMatchJob, runMatchJobInstant },
+    );
+
+    expect(startMatchJob).toHaveBeenCalledOnce();
+    expect(runMatchJobInstant).toHaveBeenCalledWith("job-123", unusedClient);
+    expect(response.structuredContent).toEqual({ jobId: "job-123", status: "queued" });
+  });
+
+  test("start_match_job only enqueues when DEMO_INSTANT_MATCH is unset", async () => {
+    const startMatchJob = vi.fn().mockResolvedValue({ jobId: "job-123", status: "queued" });
+    const runMatchJobInstant = vi.fn().mockResolvedValue({ jobId: "job-123", status: "succeeded", recommendations: [], fallbackTrace: [], candidateStatuses: [] });
+
+    await startMatchJobTool(
+      { source: "mcp", id: "user-123", appUserId: "user-123", scopes: ["match.run"] },
+      unusedClient,
+      { startMatchJob, runMatchJobInstant },
+    );
+
+    expect(startMatchJob).toHaveBeenCalledOnce();
+    expect(runMatchJobInstant).not.toHaveBeenCalled();
+  });
+
+  test("start_match_job keeps the enqueue response if the instant demo run fails", async () => {
+    vi.stubEnv("DEMO_INSTANT_MATCH", "1");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const startMatchJob = vi.fn().mockResolvedValue({ jobId: "job-123", status: "queued" });
+    const runMatchJobInstant = vi.fn().mockRejectedValue(new Error("demo run failed"));
+
+    const response = await startMatchJobTool(
+      { source: "mcp", id: "user-123", appUserId: "user-123", scopes: ["match.run"] },
+      unusedClient,
+      { startMatchJob, runMatchJobInstant },
+    );
+
+    expect(response.structuredContent).toEqual({ jobId: "job-123", status: "queued" });
+    expect(warn).toHaveBeenCalledWith("DEMO_INSTANT_MATCH run failed", expect.any(Error));
   });
 
   test("start_profile_card_job returns whether profile card generation was enqueued", async () => {
