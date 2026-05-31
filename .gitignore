@@ -8,4 +8,5 @@ coverage
 .omo
 supabase/.branches
 supabase/.temp
+.playwright-mcp
 *.tsbuildinfo
