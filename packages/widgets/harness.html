@@ -38,6 +38,26 @@
         };
       }
 
+      function profileCardResult() {
+        return {
+          structuredContent: { profileCardId: "card-harness", status: "ready" },
+          _meta: {
+            card: {
+              version: "card-harness-v1",
+              generatorVersion: "ggui-harness-2026-05-31",
+              html: '<article class="ggui-profile"><div class="ggui-profile__cover"><img data-ggui-slot="slot-1" alt="민서의 첫 번째 프로필 사진"><img data-ggui-slot="slot-2" alt="민서의 두 번째 프로필 사진"></div><section><p class="ggui-profile__eyebrow">성동구 · ENFP</p><h2>민서</h2><p>느린 산책과 전시를 좋아하고, 긴 대화에서 서로의 생활 리듬을 맞춰가는 편이에요.</p></section></article>',
+              css: '.ggui-profile { background: linear-gradient(145deg, #ffffff, #eef5ff); border: 1px solid #d9e0ec; border-radius: 28px; box-shadow: 0 18px 48px rgba(23, 32, 51, 0.14); display: grid; gap: 20px; overflow: hidden; padding: 20px; } .ggui-profile__cover { display: grid; gap: 12px; grid-template-columns: 1.35fr 1fr; } .ggui-profile img { aspect-ratio: 4 / 5; border-radius: 22px; object-fit: cover; width: 100%; } .ggui-profile__eyebrow { color: #2f5bff; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; margin: 0 0 8px; text-transform: uppercase; } .ggui-profile h2 { color: #172033; font-size: 32px; line-height: 1.1; margin: 0 0 10px; } .ggui-profile p { color: #667085; margin: 0; }',
+              placeholders: ["slot-1", "slot-2"],
+              is_synthetic: isSynthetic
+            },
+            photos: {
+              "slot-1": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 400'%3E%3Crect width='320' height='400' rx='32' fill='%232F5BFF'/%3E%3Ccircle cx='224' cy='116' r='88' fill='%2314B8A6' opacity='.82'/%3E%3Ctext x='50%25' y='58%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='64' fill='white'%3ES1%3C/text%3E%3C/svg%3E?token=harness-signed-slot-1&expires=1924992000",
+              "slot-2": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 400'%3E%3Crect width='320' height='400' rx='32' fill='%23172033'/%3E%3Ccircle cx='96' cy='126' r='82' fill='%2384A2FF' opacity='.86'/%3E%3Ctext x='50%25' y='58%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='64' fill='white'%3ES2%3C/text%3E%3C/svg%3E?token=harness-signed-slot-2&expires=1924992000"
+            }
+          }
+        };
+      }
+
       function personaResult() {
         return {
           structuredContent: { personaId: "persona-harness", status: "ready" },
@@ -80,6 +100,9 @@
         async callTool(name, args) {
           if (name === "list_recommendations") {
             return recommendationsResult();
+          }
+          if (name === "get_profile_card") {
+            return profileCardResult();
           }
           if (name === "generate_persona" || name === "update_persona") {
             return personaResult();
@@ -170,7 +193,7 @@
       }
 
       async function App() {
-        if (["profile-form", "recommendations", "match-status"].includes(widget)) {
+        if (["profile-form", "recommendations", "match-status", "profile-card"].includes(widget)) {
           await mountProductWidget(widget);
           return;
         }

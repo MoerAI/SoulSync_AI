@@ -1,5 +1,5 @@
 export type WidgetToolCallSample = {
-  widget: "profile-form" | "recommendations" | "match-status";
+  widget: "profile-form" | "recommendations" | "match-status" | "profile-card";
   name: string;
   args: Record<string, unknown>;
 };
@@ -17,4 +17,5 @@ export const widgetToolCallSamples = [
   { widget: "recommendations", name: "block_profile", args: { candidateId: "candidate-123" } },
   { widget: "match-status", name: "get_match_job", args: { jobId: "job-123" } },
   { widget: "match-status", name: "start_match_job", args: {} },
+  { widget: "profile-card", name: "get_profile_card", args: { candidateId: "candidate-123" } },
 ] as const satisfies readonly WidgetToolCallSample[];

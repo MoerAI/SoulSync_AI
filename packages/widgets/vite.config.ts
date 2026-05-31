@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
 
-const widgetEntries = ["profile-form", "recommendations", "match-status"] as const;
+const widgetEntries = ["profile-form", "recommendations", "match-status", "profile-card"] as const;
 
 function standaloneWidgetBuilds(): Plugin {
   return {

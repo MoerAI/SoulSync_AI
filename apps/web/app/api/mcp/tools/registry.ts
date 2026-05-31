@@ -4,6 +4,7 @@ import { blockProfileInput } from "./block_profile";
 import { deleteAccountInput } from "./delete_account";
 import { generatePersonaInput } from "./generate_persona";
 import { getMatchJobInput } from "./get_match_job";
+import { getProfileCardInput } from "./get_profile_card";
 import { listRecommendationsInput } from "./list_recommendations";
 import { reportProfileInput } from "./report_profile";
 import { saveProfileConsentInput } from "./save_profile_consent";
@@ -23,6 +24,7 @@ export const dataToolInputSchemas = {
   upload_profile_photo: uploadProfilePhotoInput,
   start_match_job: startMatchJobInput,
   get_match_job: getMatchJobInput,
+  get_profile_card: getProfileCardInput,
   list_recommendations: listRecommendationsInput,
   save_recommendation: saveRecommendationInput,
   report_profile: reportProfileInput,

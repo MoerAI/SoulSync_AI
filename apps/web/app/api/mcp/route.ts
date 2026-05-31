@@ -10,11 +10,13 @@ import { blockProfile, blockProfileInput } from "./tools/block_profile";
 import { deleteAccount, deleteAccountInput } from "./tools/delete_account";
 import { generatePersona, generatePersonaInput } from "./tools/generate_persona";
 import { getMatchJob, getMatchJobInput } from "./tools/get_match_job";
+import { getProfileCard, getProfileCardInput } from "./tools/get_profile_card";
 import { listRecommendations, listRecommendationsInput } from "./tools/list_recommendations";
 import { reportProfile, reportProfileInput } from "./tools/report_profile";
 import { matchStatusResourceUri, renderMatchStatus } from "./tools/render_match_status";
 import { profileFormResourceUri, renderProfileForm } from "./tools/render_profile_form";
 import { recommendationsResourceUri, renderRecommendations } from "./tools/render_recommendations";
+import { profileCardResourceUri, renderProfileCard } from "./tools/render_profile_card";
 import { runWithClaims } from "./tools/context";
 import { saveProfileConsent, saveProfileConsentInput } from "./tools/save_profile_consent";
 import { saveProfileStep, saveProfileStepInput } from "./tools/save_profile_step";
@@ -128,6 +130,17 @@ function registerDataTools(server: McpServerLike): void {
     getMatchJob,
   );
   server.registerTool(
+    "get_profile_card",
+    {
+      title: "Get Profile Card",
+      description: "Get a stored GGUI profile card (the user's own, or a matched candidate's) with widget-only signed photos.",
+      inputSchema: getProfileCardInput,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: { ui: { resourceUri: profileCardResourceUri }, "openai/outputTemplate": profileCardResourceUri },
+    },
+    getProfileCard,
+  );
+  server.registerTool(
     "list_recommendations",
     {
       title: "List Recommendations",
@@ -184,6 +197,7 @@ function registerRenderTools(server: McpServerLike): void {
   server.registerTool("render_profile_form", renderToolConfig("Render Profile Form", "Open the SoulSync profile form widget.", profileFormResourceUri), renderProfileForm);
   server.registerTool("render_recommendations", renderToolConfig("Render Recommendations", "Open the SoulSync recommendations widget.", recommendationsResourceUri), renderRecommendations);
   server.registerTool("render_match_status", renderToolConfig("Render Match Status", "Open the SoulSync match status widget.", matchStatusResourceUri), renderMatchStatus);
+  server.registerTool("render_profile_card", renderToolConfig("Render Profile Card", "Open the SoulSync profile card widget.", profileCardResourceUri), renderProfileCard);
 }
 
 async function registerWidgetResources(server: McpServerLike): Promise<void> {
@@ -191,6 +205,7 @@ async function registerWidgetResources(server: McpServerLike): Promise<void> {
     registerWidgetResource(server, "profile-form", profileFormResourceUri, "SoulSync profile form."),
     registerWidgetResource(server, "recommendations", recommendationsResourceUri, "SoulSync recommendations."),
     registerWidgetResource(server, "match-status", matchStatusResourceUri, "SoulSync match status."),
+    registerWidgetResource(server, "profile-card", profileCardResourceUri, "SoulSync profile card."),
   ]);
 }
 

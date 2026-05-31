@@ -1,4 +1,4 @@
-export type WidgetResourceName = "profile-form" | "recommendations" | "match-status";
+export type WidgetResourceName = "profile-form" | "recommendations" | "match-status" | "profile-card";
 
 type InlineWidgetOptions = {
   jobId?: string;
@@ -7,7 +7,8 @@ type InlineWidgetOptions = {
 const mountAttributes: Record<WidgetResourceName, string> = {
   "profile-form": "data-soulsync-profile-form",
   recommendations: "data-soulsync-recommendations",
-  "match-status": "data-soulsync-match-status"
+  "match-status": "data-soulsync-match-status",
+  "profile-card": "data-soulsync-profile-card"
 };
 
 function escapeHtmlAttribute(value: string) {

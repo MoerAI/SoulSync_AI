@@ -9,6 +9,7 @@ const widgetSourceFiles = [
   "../../../../../packages/widgets/src/profile-form/index.tsx",
   "../../../../../packages/widgets/src/recommendations/index.tsx",
   "../../../../../packages/widgets/src/match-status/index.tsx",
+  "../../../../../packages/widgets/src/profile-card/index.tsx",
 ] as const;
 
 const literalCallToolPattern = /callTool\(\s*["']([^"']+)["']/g;
