@@ -4,6 +4,7 @@ import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
 import { DEFAULT_RESOURCE_METADATA_PATH, OAuthAccessTokenError, resolveOrCreateAppUser, withMcpAuth } from "@soulsync/core/src/identity/index";
+import { inlineWidget, type WidgetResourceName } from "../../../../../packages/widgets/src/resourceHtml";
 import { getSupabaseIdentityClient } from "../../../lib/supabase";
 import { blockProfile, blockProfileInput } from "./tools/block_profile";
 import { deleteAccount, deleteAccountInput } from "./tools/delete_account";
@@ -193,9 +194,9 @@ async function registerWidgetResources(server: McpServerLike): Promise<void> {
   ]);
 }
 
-async function registerWidgetResource(server: McpServerLike, widgetName: string, resourceUri: string, description: string): Promise<void> {
+async function registerWidgetResource(server: McpServerLike, widgetName: WidgetResourceName, resourceUri: string, description: string): Promise<void> {
   const bundle = await readWidgetBundle(widgetName);
-  const html = inlineWidget(bundle.js, bundle.css);
+  const html = inlineWidget(widgetName, bundle.js, bundle.css);
   server.registerResource(
     widgetName,
     resourceUri,
@@ -221,7 +222,7 @@ async function registerWidgetResource(server: McpServerLike, widgetName: string,
   );
 }
 
-async function readWidgetBundle(name: string): Promise<{ js: string; css: string }> {
+async function readWidgetBundle(name: WidgetResourceName): Promise<{ js: string; css: string }> {
   const jsPath = new URL(`../../../../../packages/widgets/dist/${name}.es.js`, import.meta.url);
   const cssPath = new URL(`../../../../../packages/widgets/dist/${name}.css`, import.meta.url);
   const [js, css] = await Promise.all([readFile(jsPath, "utf8"), readFile(cssPath, "utf8")]);
@@ -237,10 +238,6 @@ function renderToolConfig(title: string, description: string, resourceUri: strin
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: { ui: { resourceUri }, "openai/outputTemplate": resourceUri },
   };
-}
-
-function inlineWidget(js: string, css: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script type="module">${js}</script></body></html>`;
 }
 
 function widgetCsp(): { connectDomains: string[]; resourceDomains: string[] } {

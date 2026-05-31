@@ -1,27 +1,55 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { build, defineConfig, type Plugin } from "vite";
+
+const widgetEntries = ["profile-form", "recommendations", "match-status"] as const;
+
+function standaloneWidgetBuilds(): Plugin {
+  return {
+    name: "soulsync-standalone-widget-builds",
+    async closeBundle() {
+      for (const entryName of widgetEntries) {
+        await build({
+          configFile: false,
+          define: { "process.env.NODE_ENV": JSON.stringify("production") },
+          plugins: [react()],
+          build: {
+            cssCodeSplit: true,
+            emptyOutDir: false,
+            lib: {
+              cssFileName: entryName,
+              entry: `src/${entryName}/index.tsx`,
+              fileName: () => `${entryName}.es.js`,
+              formats: ["es"]
+            },
+            outDir: "dist",
+            rollupOptions: {
+              external: (id) => id.startsWith("node:"),
+              output: {
+                assetFileNames: `${entryName}.[ext]`,
+                exports: "named",
+                inlineDynamicImports: true
+              }
+            }
+          }
+        });
+      }
+    }
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  plugins: [react(), standaloneWidgetBuilds()],
   build: {
     cssCodeSplit: true,
     lib: {
-      entry: {
-        index: "src/index.ts",
-        "profile-form": "src/profile-form/index.tsx",
-        recommendations: "src/recommendations/index.tsx",
-        "match-status": "src/match-status/index.tsx"
-      },
-      formats: ["es", "cjs"],
-      fileName: (format, entryName) => `${entryName}.${format}.js`
+      cssFileName: "index",
+      entry: "src/index.ts",
+      fileName: (format) => `index.${format}.js`,
+      formats: ["es", "cjs"]
     },
     rollupOptions: {
-      external: (id) =>
-        id === "react" ||
-        id === "react/jsx-runtime" ||
-        id === "react-dom" ||
-        id === "react-dom/client" ||
-        id.startsWith("node:"),
+      external: (id) => id.startsWith("node:"),
       output: {
         exports: "named"
       }

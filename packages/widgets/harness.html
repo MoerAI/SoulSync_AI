@@ -6,35 +6,91 @@
     <title>SoulSync Widgets Harness</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./dist/index.css" />
-    <script type="importmap">
-      {
-        "imports": {
-          "react": "https://esm.sh/react@19.0.0",
-          "react/jsx-runtime": "https://esm.sh/react@19.0.0/jsx-runtime",
-          "react-dom/client": "https://esm.sh/react-dom@19.0.0/client"
-        }
-      }
-    </script>
   </head>
   <body>
     <main id="root"></main>
     <script type="module">
-      import React from "react";
-      import { createRoot } from "react-dom/client";
-      import {
-        Badge,
-        Button,
-        Card,
-        Field,
-        GlobalStyles,
-        ProgressBar,
-        Stepper,
-        SyntheticBadge,
-        notifyIntrinsicHeight
-      } from "./dist/index.es.js";
+      const params = new URLSearchParams(window.location.search);
+      const widget = params.get("widget") || "sample";
+      const isSynthetic = params.get("is_synthetic") === "true";
+      const matchJobId = params.get("jobId") || "harness-job-1";
+      const matchJobCalls = new Map();
+
+      const signedPhotoUrl =
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' rx='24' fill='%232F5BFF'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='44' fill='white'%3ESS%3C/text%3E%3C/svg%3E?token=harness-signed";
+
+      function recommendationsResult() {
+        const recommendations = [
+          { id: "rec-1", candidateId: "candidate-1", rank: 1, overall: 91, summaryKo: "대화 리듬과 장기 가치관이 안정적으로 맞는 후보입니다.", is_synthetic: false, judgeScore: { overall: 91, subscores: { flow: 23, coherence: 18, mutual_curiosity: 17, values_alignment: 18, friction_risk: 3 } } },
+          { id: "rec-2", candidateId: "candidate-2", rank: 2, overall: 87, summaryKo: "서로의 생활 속도와 취미가 자연스럽게 이어지는 후보입니다.", is_synthetic: true, judgeScore: { overall: 87, subscores: { flow: 21, coherence: 18, mutual_curiosity: 18, values_alignment: 17, friction_risk: 5 } } },
+          { id: "rec-3", candidateId: "candidate-3", rank: 3, overall: 82, summaryKo: "서로 다른 관점을 존중하며 안정적으로 대화할 수 있는 후보입니다.", is_synthetic: false, judgeScore: { overall: 82, subscores: { flow: 20, coherence: 17, mutual_curiosity: 16, values_alignment: 17, friction_risk: 6 } } }
+        ];
+
+        return {
+          structuredContent: { recommendations, explanation: "하네스 mock 추천 3명" },
+          _meta: {
+            recommendations: [
+              { candidateId: "candidate-1", displayName: "민서", ageRange: "30대 초반", mbti: "ENFP", photoSignedUrl: signedPhotoUrl, highlights: ["대화 속도가 잘 맞음", "주말 취향 유사"] },
+              { candidateId: "candidate-2", displayName: "AI 하린", ageRange: "20대 후반", mbti: "INFJ", is_synthetic: true, photoSignedUrl: signedPhotoUrl, highlights: ["가치관 질문에 깊게 답함", "감정 표현이 안정적"] },
+              { candidateId: "candidate-3", displayName: "지후", ageRange: "30대 중반", mbti: "ISTJ", photoSignedUrl: signedPhotoUrl, highlights: ["갈등 해결 방식이 명확", "생활 리듬이 비슷함"] }
+            ]
+          }
+        };
+      }
+
+      function personaResult() {
+        return {
+          structuredContent: { personaId: "persona-harness", status: "ready" },
+          _meta: {
+            persona: {
+              id: "persona-harness",
+              displayName: "하네스 프로필",
+              ageRange: "만 18세 이상",
+              city: "서울",
+              district: "성동구",
+              interests: ["산책", "전시", "깊은 대화"],
+              communicationStyle: "상대의 속도를 존중하며 분명하게 답해요.",
+              boundaries: ["정확한 주소 공유 금지", "민감 정보는 매칭 목적에만 사용"],
+              is_synthetic: false
+            }
+          }
+        };
+      }
+
+      function matchJobResult(jobId) {
+        const calls = (matchJobCalls.get(jobId) || 0) + 1;
+        matchJobCalls.set(jobId, calls);
+        const running = calls < 2;
+
+        return {
+          structuredContent: {
+            job: {
+              id: jobId,
+              status: running ? "running" : "succeeded",
+              progress: running ? 54 : 100,
+              message: running ? "하네스 후보 대화 평가 중" : "하네스 추천 결과 준비 완료",
+              result: recommendationsResult()
+            }
+          },
+          _meta: { job: { id: jobId, status: running ? "running" : "succeeded", progress: running ? 54 : 100 } }
+        };
+      }
 
       window.openai = {
         async callTool(name, args) {
+          if (name === "list_recommendations") {
+            return recommendationsResult();
+          }
+          if (name === "generate_persona" || name === "update_persona") {
+            return personaResult();
+          }
+          if (name === "start_match_job") {
+            return { structuredContent: { job: { id: matchJobId, status: "queued", progress: 12, message: "하네스 매칭 작업 대기 중" } }, _meta: { job: { id: matchJobId, status: "queued", progress: 12 } } };
+          }
+          if (name === "get_match_job") {
+            const jobId = args && typeof args === "object" && "jobId" in args ? String(args.jobId) : matchJobId;
+            return matchJobResult(jobId);
+          }
           return {
             structuredContent: { name, args, ok: true },
             _meta: { mocked: true }
@@ -51,51 +107,89 @@
         }
       };
 
-      const params = new URLSearchParams(window.location.search);
-      const widget = params.get("widget") || "sample";
-      const isSynthetic = params.get("is_synthetic") === "true";
+      function createElement(tag, attributes = {}, children = []) {
+        const element = document.createElement(tag);
+        for (const [name, value] of Object.entries(attributes)) {
+          if (name === "text") {
+            element.textContent = value;
+          } else {
+            element.setAttribute(name, value);
+          }
+        }
+        for (const child of children) {
+          element.append(child);
+        }
+        return element;
+      }
+
+      function addWidgetStylesheet(widgetName) {
+        if (document.querySelector(`link[data-widget-css="${widgetName}"]`)) {
+          return;
+        }
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = `./dist/${widgetName}.css`;
+        link.dataset.widgetCss = widgetName;
+        document.head.append(link);
+      }
 
       function SampleWidget() {
-        React.useEffect(() => {
-          notifyIntrinsicHeight(document.documentElement.scrollHeight);
-        }, []);
+        const syntheticBadge = isSynthetic ? createElement("span", { class: "ssw-badge ssw-badge--synthetic", text: "AI 프로필" }) : document.createTextNode("");
+        const button = createElement("button", { class: "ssw-button ssw-button--primary ssw-button--md", type: "button" }, [createElement("span", { text: "Mock callTool" })]);
+        button.addEventListener("click", () => window.openai.callTool("sample", { source: "harness" }));
 
-        return React.createElement(
-          "div",
-          { className: "ssw-scope ssw-harness" },
-          React.createElement(GlobalStyles, null),
-          React.createElement(
-            Card,
-            {
-              header: React.createElement(
-                "div",
-                { className: "ssw-harness__header-row" },
-                React.createElement(Badge, { text: "SoulSync AI", variant: "success" }),
-                React.createElement(SyntheticBadge, { is_synthetic: isSynthetic })
-              ),
-              footer: "MCP Apps bridge mocked locally"
-            },
-            React.createElement("h1", { className: "ssw-harness__title" }, "위젯 셸 샘플"),
-            React.createElement(Stepper, { currentStep: 2, totalSteps: 3, labels: ["입력", "검토", "완료"] }),
-            React.createElement("div", { className: "ssw-harness__spacer-sm" }),
-            React.createElement(Field, { label: "프로필 메모", helperText: "로컬 하네스 입력 필드입니다.", placeholder: "메모를 입력하세요" }),
-            React.createElement("div", { className: "ssw-harness__spacer-sm" }),
-            React.createElement(ProgressBar, { value: 64, label: "매칭 준비" }),
-            React.createElement("div", { className: "ssw-harness__spacer-md" }),
-            React.createElement(Button, { onClick: () => window.openai.callTool("sample", { source: "harness" }) }, "Mock callTool")
-          )
-        );
+        return createElement("div", { class: "ssw-scope ssw-harness" }, [
+          createElement("section", { class: "ssw-card ssw-card--padding-md ssw-card--shadow" }, [
+            createElement("div", { class: "ssw-card__header" }, [
+              createElement("div", { class: "ssw-harness__header-row" }, [createElement("span", { class: "ssw-badge ssw-badge--success", text: "SoulSync AI" }), syntheticBadge])
+            ]),
+            createElement("div", { class: "ssw-card__body" }, [
+              createElement("h1", { class: "ssw-harness__title", text: "위젯 셸 샘플" }),
+              createElement("p", { class: "ssw-field__helper", text: "MCP Apps bridge mocked locally" }),
+              createElement("div", { class: "ssw-progress" }, [
+                createElement("div", { class: "ssw-progress__label" }, [createElement("span", { text: "매칭 준비" }), createElement("strong", { text: "64%" })]),
+                createElement("div", { class: "ssw-progress__track" }, [createElement("div", { class: "ssw-progress__bar", style: "transform: scaleX(0.64)" })])
+              ]),
+              button
+            ])
+          ])
+        ]);
       }
 
-      function App() {
-        if (widget !== "sample") {
-          return React.createElement("div", { className: "ssw-scope" }, `Unknown widget: ${widget}`);
+      async function mountProductWidget(widgetName) {
+        const root = document.getElementById("root");
+        root.textContent = "";
+        addWidgetStylesheet(widgetName);
+        const mount = document.createElement("div");
+        mount.setAttribute(`data-soulsync-${widgetName}`, "");
+        if (widgetName === "match-status") {
+          mount.setAttribute("data-job-id", matchJobId);
+        }
+        root.append(mount);
+        await import(`./dist/${widgetName}.es.js`);
+      }
+
+      async function App() {
+        if (["profile-form", "recommendations", "match-status"].includes(widget)) {
+          await mountProductWidget(widget);
+          return;
         }
 
-        return React.createElement(SampleWidget);
+        const root = document.getElementById("root");
+        root.textContent = "";
+        if (widget !== "sample") {
+          root.append(createElement("div", { class: "ssw-scope", text: `Unknown widget: ${widget}` }));
+          return;
+        }
+
+        root.append(SampleWidget());
+        window.openai.notifyIntrinsicHeight(document.documentElement.scrollHeight);
       }
 
-      createRoot(document.getElementById("root")).render(React.createElement(App));
+      App().catch((error) => {
+        console.error(error);
+        document.getElementById("root").textContent = error instanceof Error ? error.message : "Harness failed";
+      });
     </script>
   </body>
 </html>
