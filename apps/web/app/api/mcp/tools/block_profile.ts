@@ -1,9 +1,9 @@
-import { blockProfile as coreBlockProfile } from "@soulsync/core/src/safety/enforcement";
+import { blockProfile as blockProfileService } from "@soulsync/core/src/services/safetyService";
 import { serializeBlock } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
-import { actorFor, asEnforcementClient, ok, requireScope, rowError, type ToolResponse } from "./common";
+import { actorFor, ok, requireScope, rowError, type ToolResponse } from "./common";
 import { currentClaims } from "./context";
 
 export const blockProfileInput = {
@@ -14,11 +14,10 @@ export async function blockProfile(input: { candidateId: string }): Promise<Tool
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
-  const result = await coreBlockProfile({ blockerId: actor.appUserId, blockedId: input.candidateId }, asEnforcementClient(getServiceSupabase())).catch(() => null);
-
+  const result = await blockProfileService({ profileId: input.candidateId }, { client: getServiceSupabase(), actor }).catch(() => null);
   if (!result) {
     rowError("Unable to block profile");
   }
 
-  return ok(serializeBlock({ blockId: result.id, blockedProfileId: input.candidateId }), "Profile blocked.");
+  return ok(serializeBlock(result), "Profile blocked.");
 }

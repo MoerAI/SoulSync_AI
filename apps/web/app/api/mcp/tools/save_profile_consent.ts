@@ -1,8 +1,8 @@
-import { writeConsent } from "@soulsync/core/src/safety/enforcement";
+import { saveProfileConsent as saveProfileConsentService } from "@soulsync/core/src/services/profileService";
 import { z } from "zod";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
-import { actorFor, asEnforcementClient, ok, requireScope, rowError, type ToolResponse } from "./common";
+import { actorFor, ok, requireScope, rowError, type ToolResponse } from "./common";
 import { currentClaims } from "./context";
 
 export const saveProfileConsentInput = {
@@ -14,26 +14,10 @@ export async function saveProfileConsent(input: { consents: Array<{ scope: strin
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
-  const supabase = getServiceSupabase();
-  const ids: string[] = [];
-
-  for (const consent of input.consents) {
-    const result = await writeConsent(
-      {
-        appUserId: actor.appUserId,
-        scope: consent.scope,
-        granted: consent.granted,
-        version: input.version,
-        locale: "ko",
-        source: "mcp_widget",
-      },
-      asEnforcementClient(supabase),
-    ).catch(() => null);
-    if (!result) {
-      rowError("Unable to save profile consent");
-    }
-    ids.push(result.id);
+  const result = await saveProfileConsentService({ ...input, source: "mcp_widget" }, { client: getServiceSupabase(), actor }).catch(() => null);
+  if (!result) {
+    rowError("Unable to save profile consent");
   }
 
-  return ok({ saved: true, count: ids.length }, "Profile consent saved.", { consentIds: ids });
+  return ok({ saved: true, count: result.ids.length }, "Profile consent saved.", { consentIds: result.ids });
 }

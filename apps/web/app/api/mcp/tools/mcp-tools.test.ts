@@ -15,14 +15,14 @@ const unusedClient: SupabaseLike = {
 
 describe("MCP tool adapters", () => {
   test("start_match_job enqueues and returns a queued job without running the pipeline", async () => {
-    const enqueueMatchJob = vi.fn().mockResolvedValue("job-123");
+    const startMatchJob = vi.fn().mockResolvedValue({ jobId: "job-123", status: "queued" });
     const response = await startMatchJobTool(
       { source: "mcp", id: "user-123", appUserId: "user-123", scopes: ["match.run"] },
       unusedClient,
-      { enqueueMatchJob },
+      { startMatchJob },
     );
 
-    expect(enqueueMatchJob).toHaveBeenCalledOnce();
+    expect(startMatchJob).toHaveBeenCalledOnce();
     expect(response.structuredContent).toEqual({ jobId: "job-123", status: "queued" });
   });
 

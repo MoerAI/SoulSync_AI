@@ -75,6 +75,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.106.2
+        version: 2.106.2
       jose:
         specifier: ^6.2.3
         version: 6.2.3

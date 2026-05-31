@@ -1,4 +1,5 @@
-import { moderatePhoto, stripExif, type PhotoClassifier } from "@soulsync/core/src/safety/moderation";
+import { uploadProfilePhoto as uploadProfilePhotoService, type UploadedPhotoBytes } from "@soulsync/core/src/services/photoService";
+import type { PhotoClassifier } from "@soulsync/core/src/safety/moderation";
 import { serializePhotoUpload } from "@soulsync/core/src/serializers";
 import { z } from "zod";
 
@@ -17,39 +18,29 @@ export async function uploadProfilePhoto(input: { file: { file_id: string; file_
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
-  const fileName = sanitizeFileName(input.file.file_name ?? `${input.file.file_id}.bin`);
-  const path = `${actor.appUserId}/${Date.now()}-${fileName}`;
-  const supabase = getServiceSupabase();
   const source = await readUploadedFile(input.file.file_id);
-  const stripped = stripExif(source.buffer);
-  const moderation = await moderatePhoto({ buffer: stripped, mimeType: source.mimeType, byteLength: stripped.byteLength }, defaultPhotoClassifier);
+  const result = await uploadProfilePhotoService(
+    {
+      fileName: input.file.file_name ?? `${input.file.file_id}.bin`,
+      source,
+      classifier: defaultPhotoClassifier,
+      rejectedPhotoId: input.file.file_id,
+    },
+    { client: getServiceSupabase(), actor },
+  ).catch(() => null);
 
-  if (moderation.status === "rejected") {
-    return ok(serializePhotoUpload({ photoId: input.file.file_id, status: "rejected" }), "Profile photo rejected by moderation.", {
-      photo: { status: moderation.status, reasons: moderation.reasons },
-    });
-  }
-
-  const { error: uploadError } = await supabase.storage.from("profile-private").upload(path, moderation.buffer, {
-    contentType: moderation.mimeType,
-    upsert: false,
-  });
-  if (uploadError) {
-    rowError("Unable to upload profile photo");
-  }
-
-  const { data, error } = await supabase.from("photos").insert({ app_user_id: actor.appUserId, bucket: "profile-private", path, moderation_status: moderation.status, is_primary: false }).select("id").single<{ id: string }>();
-  if (error || !data) {
+  if (!result) {
     rowError("Unable to save profile photo");
   }
 
-  return ok(serializePhotoUpload({ photoId: data.id, status: moderation.status }), "Profile photo uploaded.", { photo: { id: data.id, status: moderation.status } });
-}
+  if (result.status === "rejected") {
+    return ok(serializePhotoUpload({ photoId: result.photoId, status: result.status }), "Profile photo rejected by moderation.", {
+      photo: { status: result.status, reasons: result.reasons ?? [] },
+    });
+  }
 
-type UploadedFileBytes = {
-  buffer: Uint8Array;
-  mimeType: string;
-};
+  return ok(serializePhotoUpload({ photoId: result.photoId, status: result.status }), "Profile photo uploaded.", { photo: { id: result.photoId, status: result.status } });
+}
 
 const defaultPhotoClassifier: PhotoClassifier = {
   async classify(input) {
@@ -59,7 +50,7 @@ const defaultPhotoClassifier: PhotoClassifier = {
   },
 };
 
-async function readUploadedFile(fileId: string): Promise<UploadedFileBytes> {
+async function readUploadedFile(fileId: string): Promise<UploadedPhotoBytes> {
   if (fileId.startsWith("data:")) {
     return readDataUrl(fileId);
   }
@@ -82,7 +73,7 @@ async function readUploadedFile(fileId: string): Promise<UploadedFileBytes> {
   };
 }
 
-function readDataUrl(value: string): UploadedFileBytes {
+function readDataUrl(value: string): UploadedPhotoBytes {
   const match = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(value);
   if (!match) {
     rowError("Unable to read uploaded profile photo");
@@ -102,8 +93,4 @@ function mimeTypeFromName(fileName: string): string {
   }
 
   return "image/jpeg";
-}
-
-function sanitizeFileName(fileName: string): string {
-  return fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }

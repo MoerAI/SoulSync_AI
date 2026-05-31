@@ -1,4 +1,5 @@
 import { actorFromSupabaseJwt, OAuthAccessTokenError, type McpActor } from "@soulsync/core/src/identity/index";
+import { findAppUserBySupabaseUserId } from "@soulsync/core/src/services/identityService";
 
 import { getServiceSupabase } from "../../../lib/supabase";
 import type { ServiceClient } from "./services";
@@ -24,11 +25,7 @@ export const withMobileActor = async (request: Request, handler: (actor: McpActo
 export const serviceClient = (): ServiceClient => getServiceSupabase() as ServiceClient;
 
 const supabaseJwtIdentityClient = () => ({
-  async findAppUserBySupabaseUserId(supabaseUserId: string) {
-    const { data } = await serviceClient().from("app_users").select("id, primary_email, display_name").eq("supabase_user_id", supabaseUserId).maybeSingle<{ id: string; primary_email: string | null; display_name: string | null }>();
-
-    return data ? { id: data.id, primaryEmail: data.primary_email, displayName: data.display_name } : null;
-  },
+  findAppUserBySupabaseUserId: (supabaseUserId: string) => findAppUserBySupabaseUserId(serviceClient(), supabaseUserId),
 });
 
 export const readJson = async (request: Request): Promise<Record<string, unknown>> => {
