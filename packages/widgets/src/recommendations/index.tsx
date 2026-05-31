@@ -5,7 +5,7 @@ import { Badge, Button, Card, EmptyState, ErrorState, ProgressBar, SyntheticBadg
 import { GlobalStyles } from "../theme";
 import "./styles.css";
 
-type JudgeSubscores = {
+export type JudgeSubscores = {
   flow?: number;
   coherence?: number;
   mutual_curiosity?: number;
@@ -13,7 +13,7 @@ type JudgeSubscores = {
   friction_risk?: number;
 };
 
-type RecommendationCard = {
+export type RecommendationCard = {
   recommendationId: string;
   candidateId: string;
   rank: number;
@@ -29,7 +29,7 @@ type RecommendationCard = {
   recommended: boolean;
 };
 
-type RecommendationsSnapshot = {
+export type RecommendationsSnapshot = {
   recommendations: RecommendationCard[];
   explanation?: string;
 };
@@ -127,7 +127,7 @@ function subscoresFrom(item: Record<string, unknown>) {
 export function normalizeRecommendations(result: unknown): RecommendationsSnapshot {
   const content = structuredContent(result);
   const meta = metaContent(result);
-  const source = Array.isArray(content) ? content : arrayFrom(content?.recommendations ?? content?.candidates);
+  const source = Array.isArray(content) ? content : arrayFrom(content?.recommendations ?? content?.candidates ?? meta.recommendations ?? meta.candidates);
   const explanation = !Array.isArray(content) ? stringFrom(content?.explanation ?? content?.fallbackReason ?? meta.explanation) : stringFrom(meta.explanation);
 
   const recommendations: RecommendationCard[] = [];
@@ -143,7 +143,7 @@ export function normalizeRecommendations(result: unknown): RecommendationsSnapsh
       const candidateId = candidateIdFrom(item, metaCandidate, rank);
       const judgeScore = asRecord(item.judgeScore) ?? item;
       const displayName = stringFrom(candidate.displayName) ?? stringFrom(candidate.name) ?? stringFrom(metaCandidate.displayName) ?? `추천 후보 ${rank}`;
-      const isSynthetic = Boolean(item.is_synthetic ?? candidate.is_synthetic ?? metaCandidate.is_synthetic);
+      const isSynthetic = Boolean(item.is_synthetic ?? item.isSynthetic ?? candidate.is_synthetic ?? candidate.isSynthetic ?? metaCandidate.is_synthetic ?? metaCandidate.isSynthetic);
       const recommendation: RecommendationCard = {
         recommendationId: stringFrom(item.id) ?? `recommendation-${rank}`,
         candidateId,
@@ -169,7 +169,7 @@ export function normalizeRecommendations(result: unknown): RecommendationsSnapsh
   return { recommendations, explanation };
 }
 
-function RecommendationPhoto({ recommendation }: { recommendation: RecommendationCard }) {
+export function RecommendationPhoto({ recommendation }: { recommendation: RecommendationCard }) {
   if (!recommendation.photoSignedUrl) {
     return <div aria-label="서명된 사진 없음" className="ssw-rec-photo ssw-rec-photo--fallback">SS</div>;
   }
@@ -177,7 +177,7 @@ function RecommendationPhoto({ recommendation }: { recommendation: Recommendatio
   return <img alt={`${recommendation.displayName} 프로필 사진`} className="ssw-rec-photo" src={recommendation.photoSignedUrl} />;
 }
 
-function SubscoreBars({ recommendation }: { recommendation: RecommendationCard }) {
+export function SubscoreBars({ recommendation }: { recommendation: RecommendationCard }) {
   return (
     <div className="ssw-rec-scores" aria-label={`${recommendation.displayName} 세부 점수`}>
       {SUBSCORE_LABELS.map(([key, label, max]) => {
@@ -197,7 +197,7 @@ function SubscoreBars({ recommendation }: { recommendation: RecommendationCard }
   );
 }
 
-function RecommendationCardView({ recommendation }: { recommendation: RecommendationCard }) {
+export function RecommendationCardView({ recommendation }: { recommendation: RecommendationCard }) {
   const [savingAction, setSavingAction] = useState<string>();
 
   async function runAction(action: "save" | "report" | "block") {

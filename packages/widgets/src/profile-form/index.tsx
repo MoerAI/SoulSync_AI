@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { callTool, notifyIntrinsicHeight, setWidgetState, uploadFile } from "../bridge";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, ProgressBar, Stepper, SyntheticBadge } from "../components";
 import { CONSENT_ITEMS, ConsentScreen, createEmptyConsent, getMissingRequiredConsents, type ConsentKey, type ConsentState } from "../consent";
 import { GlobalStyles } from "../theme";
+import { normalizeProfileCard, SanitizedProfileCard, type ProfileCardSnapshot } from "../profile-card";
+import { normalizeRecommendations, RecommendationCardView, type RecommendationsSnapshot } from "../recommendations";
 import "./styles.css";
 import { ALL_PROFILE_QUESTIONS, PROFILE_QUESTIONS_SOURCE, QUESTION_SECTIONS, type ProfileQuestion, type QuestionSection } from "./questions";
 
@@ -30,6 +32,8 @@ type PhotoState = {
   status: "idle" | "pending" | "unavailable" | "error";
 };
 
+type DemoStage = "card" | "matching";
+
 type FormState = {
   step: number;
   birthYear: string;
@@ -37,6 +41,8 @@ type FormState = {
   answers: Answers;
   photo: PhotoState;
   persona?: PersonaSpec;
+  demoStage?: DemoStage;
+  matchJobId?: string;
 };
 
 const STORAGE_KEY = "soulsync.profile-form.v1";
@@ -62,7 +68,14 @@ function readStoredState(): FormState {
       return createInitialState();
     }
     const parsed = JSON.parse(stored) as Partial<FormState>;
-    return { ...createInitialState(), ...parsed, consent: { ...createEmptyConsent(), ...parsed.consent }, photo: parsed.photo ?? { status: "idle" } };
+    return {
+      ...createInitialState(),
+      ...parsed,
+      consent: { ...createEmptyConsent(), ...parsed.consent },
+      photo: parsed.photo ?? { status: "idle" },
+      demoStage: parsed.demoStage === "card" || parsed.demoStage === "matching" ? parsed.demoStage : undefined,
+      matchJobId: typeof parsed.matchJobId === "string" ? parsed.matchJobId : undefined
+    };
   } catch {
     return createInitialState();
   }
@@ -114,6 +127,32 @@ function sectionProgress(section: QuestionSection | undefined, answers: Answers)
 function answerSummary(answers: Answers) {
   const values = ALL_PROFILE_QUESTIONS.map((question) => answers[question.id]).filter(Boolean);
   return values.flatMap((value) => (Array.isArray(value) ? value : [value])).slice(0, 8);
+}
+
+function recordFrom(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function jobIdFrom(result: unknown) {
+  const record = recordFrom(result);
+  const meta = recordFrom(record?._meta);
+  const content = recordFrom(record?.structuredContent);
+  const metaJob = recordFrom(meta?.job);
+  const contentJob = recordFrom(content?.job);
+  const directJob = recordFrom(record?.job);
+  const id = metaJob?.id ?? contentJob?.id ?? directJob?.id ?? content?.jobId ?? record?.jobId;
+  return typeof id === "string" && id.trim().length > 0 ? id : undefined;
+}
+
+function jobStatusFrom(result: unknown) {
+  const record = recordFrom(result);
+  const meta = recordFrom(record?._meta);
+  const content = recordFrom(record?.structuredContent);
+  const metaJob = recordFrom(meta?.job);
+  const contentJob = recordFrom(content?.job);
+  const directJob = recordFrom(record?.job);
+  const status = metaJob?.status ?? contentJob?.status ?? directJob?.status ?? content?.status ?? record?.status;
+  return typeof status === "string" ? status : undefined;
 }
 
 function fallbackPersona(state: FormState): PersonaSpec {
@@ -179,7 +218,9 @@ function serializeState(state: FormState) {
     consent: state.consent,
     answers: state.answers,
     photo: state.photo,
-    persona: state.persona
+    persona: state.persona,
+    demoStage: state.demoStage,
+    matchJobId: state.matchJobId
   };
 }
 
@@ -241,6 +282,12 @@ export function ProfileFormWidget() {
   const [saving, setSaving] = useState(false);
   const [personaEditing, setPersonaEditing] = useState(false);
   const [personaDraft, setPersonaDraft] = useState<PersonaSpec>();
+  const [profileCardSnapshot, setProfileCardSnapshot] = useState<ProfileCardSnapshot>({ photos: {} });
+  const [profileCardLoading, setProfileCardLoading] = useState(false);
+  const [profileCardError, setProfileCardError] = useState<string>();
+  const [recommendationsSnapshot, setRecommendationsSnapshot] = useState<RecommendationsSnapshot>({ recommendations: [] });
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [matchingStatus, setMatchingStatus] = useState("매칭 중...");
   const currentSection = sectionForStep(state.step);
   const missingConsents = useMemo(() => getMissingRequiredConsents(state.consent), [state.consent]);
   const completion = Math.round(((state.step + 1) / STEP_LABELS.length) * 100);
@@ -254,6 +301,10 @@ export function ProfileFormWidget() {
   }, [state]);
 
   useEffect(() => {
+    notifyIntrinsicHeight(document.documentElement.scrollHeight);
+  }, [profileCardSnapshot, profileCardLoading, profileCardError, recommendationsSnapshot, recommendationsLoading, matchingStatus]);
+
+  useEffect(() => {
     if (state.step === 6 && !state.persona && !saving) {
       if (!state.consent.aiPersonaGeneration) {
         const persona = fallbackPersona(state);
@@ -264,6 +315,28 @@ export function ProfileFormWidget() {
       void generatePersona(false);
     }
   }, [state.step]);
+
+  useEffect(() => {
+    if (state.demoStage === "card" && !profileCardSnapshot.card && !profileCardLoading) {
+      void loadProfileCardStage();
+    }
+  }, [state.demoStage, profileCardSnapshot.card, profileCardLoading]);
+
+  useEffect(() => {
+    if (state.demoStage !== "card" || !profileCardSnapshot.card) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      setState((current) => (current.demoStage === "card" ? { ...current, demoStage: "matching" } : current));
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [state.demoStage, profileCardSnapshot.card]);
+
+  useEffect(() => {
+    if (state.demoStage === "matching" && state.matchJobId && recommendationsSnapshot.recommendations.length === 0 && !recommendationsLoading) {
+      void loadRecommendationsAfterJob(state.matchJobId);
+    }
+  }, [state.demoStage, state.matchJobId, recommendationsSnapshot.recommendations.length, recommendationsLoading]);
 
   async function persistStep(stepName: string, payload: unknown) {
     setSaving(true);
@@ -368,6 +441,49 @@ export function ProfileFormWidget() {
     }
   }
 
+  async function loadProfileCardStage() {
+    setProfileCardLoading(true);
+    setProfileCardError(undefined);
+    try {
+      const result = await callTool("get_profile_card", {});
+      setProfileCardSnapshot(normalizeProfileCard(result));
+    } catch (toolError) {
+      setProfileCardError(toolError instanceof Error ? toolError.message : "프로필 카드를 불러오지 못했어요.");
+    } finally {
+      setProfileCardLoading(false);
+    }
+  }
+
+  async function loadRecommendationsAfterJob(jobId: string) {
+    setRecommendationsLoading(true);
+    setMatchingStatus("매칭 중...");
+    setError(undefined);
+    try {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const result = await callTool("get_match_job", { jobId });
+        const status = jobStatusFrom(result);
+        if (status === "succeeded") {
+          const recommendations = await callTool("list_recommendations", {});
+          setRecommendationsSnapshot(normalizeRecommendations(recommendations));
+          setMatchingStatus("매칭 결과가 준비됐어요.");
+          return;
+        }
+        if (status === "failed" || status === "cancelled") {
+          setError("매칭 작업이 완료되지 못했어요. 잠시 후 다시 시도해 주세요.");
+          return;
+        }
+        if (attempt < 5) {
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
+        }
+      }
+      setError("매칭 결과 준비가 지연되고 있어요. 잠시 후 다시 확인해 주세요.");
+    } catch (toolError) {
+      setError(toolError instanceof Error ? toolError.message : "매칭 결과를 불러오지 못했어요.");
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  }
+
   async function activateMatching() {
     if (!isAdult(state.birthYear)) {
       setError("만 18세 이상 확인이 필요해요.");
@@ -378,7 +494,9 @@ export function ProfileFormWidget() {
       return;
     }
     await persistStep("activate_matching", { persona: state.persona, ready: true });
-    await callTool("start_match_job", {});
+    const result = await callTool("start_match_job", {});
+    const matchJobId = jobIdFrom(result);
+    setState((current) => ({ ...current, demoStage: "card", matchJobId }));
   }
 
   function renderAgeGate() {
@@ -554,6 +672,52 @@ export function ProfileFormWidget() {
     );
   }
 
+  const handlePhotoSlotsBound = useCallback(() => {
+    notifyIntrinsicHeight(document.documentElement.scrollHeight);
+  }, []);
+
+  function renderProfileCardStage() {
+    return (
+      <Card className="ssw-profile-demo-card" padding="lg">
+        <div className="ssw-profile-card-header">
+          <div>
+            <Badge text="Demo Flow" variant="success" />
+            <h1>✨ 당신의 프로필 카드가 완성됐어요</h1>
+            <p>공개 가능한 카드 HTML은 정화한 뒤, 위젯 전용 서명 사진만 슬롯에 연결했어요.</p>
+          </div>
+          <SyntheticBadge is_synthetic={Boolean(profileCardSnapshot.card?.is_synthetic)} />
+        </div>
+        {profileCardError ? <ErrorState description={profileCardError} onRetry={loadProfileCardStage} title="프로필 카드를 불러오지 못했어요" /> : null}
+        {!profileCardError && profileCardLoading ? <EmptyState description="프로필 카드와 안전한 사진 링크를 불러오는 중입니다." title="프로필 카드 준비 중" /> : null}
+        {!profileCardError && !profileCardLoading && !profileCardSnapshot.card ? <EmptyState description="생성된 카드가 아직 준비되지 않았어요." title="카드 준비 중" /> : null}
+        {!profileCardError && profileCardSnapshot.card ? <SanitizedProfileCard onPhotoSlotsBound={handlePhotoSlotsBound} snapshot={profileCardSnapshot} /> : null}
+      </Card>
+    );
+  }
+
+  function renderMatchingStage() {
+    const visibleRecommendations = recommendationsSnapshot.recommendations.slice(0, 10);
+    return (
+      <Card className="ssw-profile-demo-card" padding="lg">
+        <div className="ssw-profile-heading">
+          <Badge text="Demo Flow" variant="success" />
+          <h2>💞 매칭 결과</h2>
+          <p>{matchingStatus}</p>
+        </div>
+        {error ? <p className="ssw-profile-alert" role="alert">{error}</p> : null}
+        {!error && recommendationsLoading && visibleRecommendations.length === 0 ? <EmptyState description="페르소나 기반 후보 대화 평가를 확인하고 있어요." title="매칭 중..." /> : null}
+        {!error && !recommendationsLoading && visibleRecommendations.length === 0 ? <EmptyState description={recommendationsSnapshot.explanation ?? "표시할 추천 후보가 아직 없어요."} title="추천 후보 준비 중" /> : null}
+        {visibleRecommendations.length > 0 ? (
+          <div className="ssw-rec-list ssw-profile-rec-list">
+            {visibleRecommendations.map((recommendation) => (
+              <RecommendationCardView key={recommendation.candidateId} recommendation={recommendation} />
+            ))}
+          </div>
+        ) : null}
+      </Card>
+    );
+  }
+
   return (
     <div className="ssw-scope ssw-profile-shell">
       <GlobalStyles />
@@ -570,9 +734,9 @@ export function ProfileFormWidget() {
         <Stepper currentStep={state.step + 1} labels={STEP_LABELS} totalSteps={STEP_LABELS.length} />
         <ProgressBar label="전체 진행률" value={completion} />
       </Card>
-      {error && state.step !== 6 ? <p className="ssw-profile-alert" role="alert">{error}</p> : null}
-      {state.step === 0 ? renderAgeGate() : null}
-      {state.step === 1 ? (
+      {error && state.step !== 6 && !state.demoStage ? <p className="ssw-profile-alert" role="alert">{error}</p> : null}
+      {!state.demoStage && state.step === 0 ? renderAgeGate() : null}
+      {!state.demoStage && state.step === 1 ? (
         <ConsentScreen
           consent={state.consent}
           disabled={saving}
@@ -588,9 +752,11 @@ export function ProfileFormWidget() {
           }}
         />
       ) : null}
-      {currentSection ? renderQuestions(currentSection) : null}
-      {state.step === 5 ? renderPhoto() : null}
-      {state.step === 6 ? renderPersona() : null}
+      {!state.demoStage && currentSection ? renderQuestions(currentSection) : null}
+      {!state.demoStage && state.step === 5 ? renderPhoto() : null}
+      {!state.demoStage && state.step === 6 ? renderPersona() : null}
+      {state.demoStage === "card" ? renderProfileCardStage() : null}
+      {state.demoStage === "matching" ? renderMatchingStage() : null}
     </div>
   );
 }

@@ -84,6 +84,7 @@
 
         return {
           structuredContent: {
+            jobId,
             job: {
               id: jobId,
               status: running ? "running" : "succeeded",
@@ -92,7 +93,7 @@
               result: recommendationsResult()
             }
           },
-          _meta: { job: { id: jobId, status: running ? "running" : "succeeded", progress: running ? 54 : 100 } }
+          _meta: { job: { id: jobId, jobId, status: running ? "running" : "succeeded", progress: running ? 54 : 100 } }
         };
       }
 
@@ -108,7 +109,7 @@
             return personaResult();
           }
           if (name === "start_match_job") {
-            return { structuredContent: { job: { id: matchJobId, status: "queued", progress: 12, message: "하네스 매칭 작업 대기 중" } }, _meta: { job: { id: matchJobId, status: "queued", progress: 12 } } };
+            return { structuredContent: { jobId: matchJobId, job: { id: matchJobId, status: "queued", progress: 12, message: "하네스 매칭 작업 대기 중" } }, _meta: { job: { id: matchJobId, jobId: matchJobId, status: "queued", progress: 12 } } };
           }
           if (name === "get_match_job") {
             const jobId = args && typeof args === "object" && "jobId" in args ? String(args.jobId) : matchJobId;
