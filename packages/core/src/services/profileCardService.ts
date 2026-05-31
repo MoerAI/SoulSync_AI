@@ -1,4 +1,6 @@
 import { CardArtifactSchema, type CardArtifact } from "../cardgen/types";
+import type { SupabaseLike } from "../jobs/pipeline";
+import { runProfileCardJob } from "../jobs/profileCardPipeline";
 import { signedDisplayablePhotosByCandidate } from "./recommendationService";
 import type { CoreServiceContext } from "./types";
 
@@ -61,6 +63,25 @@ export const getProfileCardForViewer = async (input: { candidateId?: string }, c
   const photos = Object.fromEntries(card.placeholders.slice(0, urls.length).map((placeholder, index) => [placeholder, urls[index]]));
 
   return { card, photos };
+};
+
+export const getProfileCardForViewerEnsured = async (
+  input: { candidateId?: string },
+  context: CoreServiceContext,
+  opts: { generate?: boolean } = {},
+): Promise<{ card: CardArtifact | null; photos: Record<string, string> }> => {
+  const existing = await getProfileCardForViewer(input, context);
+  if (existing.card || opts.generate !== true) {
+    return existing;
+  }
+
+  const targetAppUserId = input.candidateId ?? context.actor.appUserId;
+  const { jobId } = await enqueueProfileCardGeneration(targetAppUserId, context);
+  if (jobId) {
+    await runProfileCardJob(jobId, { client: context.client as unknown as SupabaseLike });
+  }
+
+  return getProfileCardForViewer(input, context);
 };
 
 const loadLatestProfileCard = async (appUserId: string, client: CoreServiceContext["client"]): Promise<CardArtifact | null> => {

@@ -6,8 +6,10 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   actorFromClaims,
   issueOAuthAccessToken,
+  OAuthAccessTokenError,
   resolveOrCreateAppUser,
   verifyOAuthAccessToken,
+  withMcpAuth,
   type IdentityClient,
   type StoredAppUser,
   type StoredExternalIdentity,
@@ -25,6 +27,7 @@ const originalEnv = {
   audience: process.env.OAUTH_AUDIENCE,
   asSecret: process.env.OAUTH_AS_JWT_SECRET,
   secret: process.env.OAUTH_STUB_JWT_SECRET,
+  demoNoAuth: process.env.DEMO_NOAUTH,
 };
 
 describe("OAuth access token identity linking", () => {
@@ -41,6 +44,7 @@ describe("OAuth access token identity linking", () => {
     restoreEnv("OAUTH_AUDIENCE", originalEnv.audience);
     restoreEnv("OAUTH_AS_JWT_SECRET", originalEnv.asSecret);
     restoreEnv("OAUTH_STUB_JWT_SECRET", originalEnv.secret);
+    restoreEnv("DEMO_NOAUTH", originalEnv.demoNoAuth);
   });
 
   test("first-party authorization server token verifies with app user claims", async () => {
@@ -98,6 +102,76 @@ describe("OAuth access token identity linking", () => {
 
     await expect(verifyOAuthAccessToken(wrongAudience, { issuer, audience, asSecret })).rejects.toMatchObject({ code: "invalid_token" });
     await expect(verifyOAuthAccessToken(expired, { issuer, audience, asSecret })).rejects.toMatchObject({ code: "invalid_token" });
+  });
+
+  test("DEMO_NOAUTH lets withMcpAuth proceed without a bearer token using full demo scopes", async () => {
+    process.env.DEMO_NOAUTH = "1";
+    let observedClaims: Awaited<ReturnType<typeof captureClaims>> | undefined;
+    const handler = withMcpAuth(async (_request, claims) => {
+      observedClaims = captureClaims(claims);
+      return new Response("ok");
+    });
+
+    const response = await handler(new Request(`${audience}/demo`));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("ok");
+    expect(observedClaims).toMatchObject({
+      sub: "demo-user",
+      scopes: ["profile.read", "profile.write", "match.run"],
+      appUserId: undefined,
+    });
+  });
+
+  test("DEMO_NOAUTH leaves bearer-token validation unchanged when a token is present", async () => {
+    process.env.DEMO_NOAUTH = "1";
+    const handler = withMcpAuth(async () => new Response("ok"));
+
+    const response = await handler(new Request(`${audience}/demo`, { headers: { authorization: "Bearer not-a-jwt" } }));
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe("invalid_token");
+  });
+
+  test("unset DEMO_NOAUTH still rejects missing bearer tokens with the OAuth challenge", async () => {
+    delete process.env.DEMO_NOAUTH;
+    let handlerCalled = false;
+    const handler = withMcpAuth(async () => {
+      handlerCalled = true;
+      return new Response("ok");
+    });
+
+    const response = await handler(new Request(`${audience}/demo`));
+    const body = (await response.json()) as { error: string; error_description: string };
+
+    expect(handlerCalled).toBe(false);
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toContain("resource_metadata=");
+    expect(body).toMatchObject({ error: "invalid_token", error_description: "No authorization provided" });
+  });
+
+  test("DEMO_NOAUTH demo claims resolve through one fixed demo app user", async () => {
+    process.env.DEMO_NOAUTH = "1";
+    let demoClaims: Awaited<ReturnType<typeof captureClaims>> | undefined;
+    const handler = withMcpAuth(async (_request, claims) => {
+      demoClaims = captureClaims(claims);
+      return new Response("ok");
+    });
+
+    await handler(new Request(`${audience}/demo`));
+    if (!demoClaims) {
+      throw new Error("expected demo claims");
+    }
+
+    const first = await resolveOrCreateAppUser({ ...demoClaims, raw: demoClaims.raw }, memoryIdentityClient());
+    const second = await resolveOrCreateAppUser({ ...demoClaims, raw: demoClaims.raw }, memoryIdentityClient(first.appUserId));
+
+    expect(first.status).toBe("created");
+    expect(first.appUserId).toBe("demo-app-user");
+    expect(second.status).toBe("linked");
+    expect(second.appUserId).toBe("demo-app-user");
+    expect(second.claims.appUserId).toBe("demo-app-user");
   });
 
   test("valid local stub token resolves to an app user and creates identity rows", async () => {
@@ -235,6 +309,75 @@ describe("OAuth access token identity linking", () => {
     expect(appUsersWithEmail).toEqual([{ id: existingUser.id }]);
   });
 });
+
+type CapturedClaims = {
+  iss: string;
+  aud: string | string[];
+  exp: number;
+  iat?: number;
+  sub: string;
+  scopes: string[];
+  email?: string;
+  name?: string;
+  appUserId?: string;
+  pendingLinkId?: string;
+  raw: Record<string, unknown>;
+};
+
+const captureClaims = (claims: Parameters<Parameters<typeof withMcpAuth>[0]>[1]): CapturedClaims => ({
+  iss: claims.iss,
+  aud: claims.aud,
+  exp: claims.exp,
+  iat: claims.iat,
+  sub: claims.sub,
+  scopes: claims.scopes,
+  email: claims.email,
+  name: claims.name,
+  appUserId: claims.appUserId,
+  pendingLinkId: claims.pendingLinkId,
+  raw: claims.raw,
+});
+
+const memoryIdentityClient = (existingDemoAppUserId?: string): IdentityClient => {
+  const identities = new Map<string, StoredExternalIdentity>();
+  if (existingDemoAppUserId) {
+    identities.set(`${provider}:demo-user`, {
+      id: "demo-external-identity",
+      appUserId: existingDemoAppUserId,
+      provider,
+      providerSubject: "demo-user",
+      email: null,
+      rawClaims: { sub: "demo-user", app_user_id: existingDemoAppUserId },
+    });
+  }
+
+  return {
+    async findExternalIdentity(input) {
+      return identities.get(`${input.provider}:${input.providerSubject}`) ?? null;
+    },
+    async findAppUserByEmail() {
+      return null;
+    },
+    async createAppUser() {
+      return { id: "demo-app-user", primaryEmail: null, displayName: "demo-user" };
+    },
+    async upsertExternalIdentity(input) {
+      const identity = {
+        id: "demo-external-identity",
+        appUserId: input.appUserId,
+        provider: input.provider,
+        providerSubject: input.providerSubject,
+        email: input.email ?? null,
+        rawClaims: input.rawClaims,
+      };
+      identities.set(`${input.provider}:${input.providerSubject}`, identity);
+      return identity;
+    },
+    async createPendingExternalIdentity() {
+      throw new OAuthAccessTokenError("server_error", "demo claims must not create pending identities", 500);
+    },
+  };
+};
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 

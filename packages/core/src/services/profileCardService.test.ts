@@ -1,14 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, test } from "vitest";
 
-import { enqueueProfileCardGeneration, getProfileCard, getProfileCardForViewer } from "./profileCardService";
+import { enqueueProfileCardGeneration, getProfileCard, getProfileCardForViewer, getProfileCardForViewerEnsured } from "./profileCardService";
 import type { CoreServiceContext } from "./types";
 
 type StoredRow = Record<string, unknown>;
-type TableName = "photos" | "profile_card_jobs" | "profile_cards" | "recommendations";
+type TableName = "photos" | "profile_card_jobs" | "profile_cards" | "profiles" | "recommendations";
 type Filter = { column: string; value: unknown } | { column: string; values: Set<unknown> };
 type Ordering = { column: string; ascending: boolean };
 type QueryResult<T> = { data: T | null; error: Error | null };
+type QueryRowsResult = { data: StoredRow[]; error: null };
+
+const UPDATED_AT = "2026-05-31T00:00:00.000Z";
 
 describe("profileCardService", () => {
   test("getProfileCardForViewer returns no card or photos when the candidate is not recommended to the actor", async () => {
@@ -71,6 +74,34 @@ describe("profileCardService", () => {
     expect(second).toEqual({ enqueued: false });
     expect(client.rows.profile_card_jobs).toEqual([{ id: "profile_card_jobs-1", app_user_id: "actor", status: "queued" }]);
   });
+
+  test("getProfileCardForViewerEnsured generates and returns a missing actor card when enabled", async () => {
+    const { client, context } = contextWithRows({
+      photos: [photoRow("photo-1", "actor", "actor/primary.jpg", true)],
+      profiles: [profileRow("actor")],
+    });
+
+    const result = await getProfileCardForViewerEnsured({}, context, { generate: true });
+
+    expect(result.card).toMatchObject({
+      version: `profile-actor:${UPDATED_AT}`,
+      generatorVersion: "ggui-card-v1",
+      placeholders: ["slot-1"],
+      is_synthetic: true,
+    });
+    expect(result.card?.html).toContain("Profile Card Tester");
+    expect(result.photos).toEqual({ "slot-1": "https://signed.example/actor/primary.jpg" });
+    expect(client.rows.profile_cards).toHaveLength(1);
+    expect(client.rows.profile_card_jobs).toEqual([expect.objectContaining({ app_user_id: "actor", status: "succeeded", progress: 100 })]);
+  });
+
+  test("getProfileCardForViewerEnsured does not generate a missing card when disabled", async () => {
+    const { client, context } = contextWithRows({ profiles: [profileRow("actor")] });
+
+    await expect(getProfileCardForViewerEnsured({}, context, { generate: false })).resolves.toEqual({ card: null, photos: {} });
+    expect(client.rows.profile_cards).toHaveLength(0);
+    expect(client.rows.profile_card_jobs).toHaveLength(0);
+  });
 });
 
 const contextWithRows = (rows: Partial<Record<TableName, StoredRow[]>> = {}): { client: FakeProfileCardClient; context: CoreServiceContext } => {
@@ -118,6 +149,34 @@ const photoRow = (id: string, appUserId: string, path: string, isPrimary: boolea
   is_primary: isPrimary,
 });
 
+const profileRow = (appUserId: string): StoredRow => ({
+  id: `profile-${appUserId}`,
+  app_user_id: appUserId,
+  city: "Seoul",
+  district: "Gangnam-gu",
+  mbti: "ENFP",
+  religion_type: "기독교",
+  religion_intensity: 3,
+  values: { familyValues: ["kindness"], lifePriorities: ["growth"], dealbreakers: ["dishonesty"] },
+  visibility: "discoverable",
+  is_synthetic: true,
+  salary_band: "private salary",
+  profile_text: "Profile card service test intro",
+  persona_spec: {
+    id: `profile-${appUserId}`,
+    displayName: "Profile Card Tester",
+    ageRange: "30s",
+    city: "Seoul",
+    district: "Gangnam-gu",
+    mbti: "ENFP",
+    values: { familyValues: ["kindness"], lifePriorities: ["growth"], dealbreakers: ["dishonesty"] },
+    interests: ["coffee", "hiking"],
+    boundaries: ["No private details"],
+    is_synthetic: true,
+  },
+  updated_at: UPDATED_AT,
+});
+
 class FakeProfileCardClient {
   readonly rows: Record<TableName, StoredRow[]>;
   readonly storage = new FakeStorage();
@@ -127,6 +186,7 @@ class FakeProfileCardClient {
       photos: [...(rows.photos ?? [])],
       profile_card_jobs: [...(rows.profile_card_jobs ?? [])],
       profile_cards: [...(rows.profile_cards ?? [])],
+      profiles: [...(rows.profiles ?? [])],
       recommendations: [...(rows.recommendations ?? [])],
     };
   }
@@ -143,9 +203,10 @@ class FakeProfileCardClient {
 class FakeQuery {
   private filters: Filter[] = [];
   private limitCount: number | null = null;
-  private operation: "insert" | "select" = "select";
+  private operation: "insert" | "select" | "update" | "upsert" = "select";
   private orderings: Ordering[] = [];
   private payload: StoredRow | StoredRow[] | null = null;
+  private conflictColumns: string[] = [];
 
   constructor(private readonly client: FakeProfileCardClient, private readonly table: TableName) {}
 
@@ -184,6 +245,21 @@ class FakeQuery {
     return this;
   }
 
+  update(payload: StoredRow): this {
+    this.operation = "update";
+    this.payload = payload;
+
+    return this;
+  }
+
+  upsert(payload: StoredRow | StoredRow[], options?: { onConflict?: string }): this {
+    this.operation = "upsert";
+    this.payload = payload;
+    this.conflictColumns = options?.onConflict?.split(",") ?? [];
+
+    return this;
+  }
+
   async maybeSingle<Row>(): Promise<QueryResult<Row>> {
     const rows = await this.execute();
 
@@ -203,7 +279,20 @@ class FakeQuery {
     return { data: rows as unknown as Rows, error: null };
   }
 
+  then<TResult1 = QueryRowsResult, TResult2 = never>(
+    onfulfilled?: ((value: QueryRowsResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): PromiseLike<TResult1 | TResult2> {
+    return this.executeRows().then(onfulfilled, onrejected);
+  }
+
+  private async executeRows(): Promise<QueryRowsResult> {
+    return { data: await this.execute(), error: null };
+  }
+
   private async execute(): Promise<StoredRow[]> {
+    let rows = this.client.rows[this.table].filter((row) => this.matches(row));
+
     if (this.operation === "insert") {
       const table = this.client.rows[this.table];
       const payloads = Array.isArray(this.payload) ? this.payload : [this.payload ?? {}];
@@ -213,7 +302,31 @@ class FakeQuery {
       return inserted;
     }
 
-    let rows = this.client.rows[this.table].filter((row) => this.matches(row));
+    if (this.operation === "update") {
+      rows.forEach((row) => Object.assign(row, this.payload ?? {}));
+
+      return rows;
+    }
+
+    if (this.operation === "upsert") {
+      const table = this.client.rows[this.table];
+      const written: StoredRow[] = [];
+
+      for (const payload of Array.isArray(this.payload) ? this.payload : [this.payload ?? {}]) {
+        const existing = table.find((row) => this.conflictColumns.length > 0 && this.conflictColumns.every((column) => row[column] === payload[column]));
+        if (existing) {
+          Object.assign(existing, payload);
+          written.push(existing);
+        } else {
+          const inserted = { id: payload.id ?? `${this.table}-${table.length + 1}`, ...payload };
+          table.push(inserted);
+          written.push(inserted);
+        }
+      }
+
+      return written;
+    }
+
     for (const ordering of this.orderings) {
       rows = [...rows].sort((left, right) => compareValues(left[ordering.column], right[ordering.column], ordering.ascending));
     }
@@ -250,7 +363,7 @@ class FakeBucket {
   }
 }
 
-const isTableName = (table: string): table is TableName => ["photos", "profile_card_jobs", "profile_cards", "recommendations"].includes(table);
+const isTableName = (table: string): table is TableName => ["photos", "profile_card_jobs", "profile_cards", "profiles", "recommendations"].includes(table);
 
 const compareValues = (left: unknown, right: unknown, ascending: boolean): number => {
   const leftValue = typeof left === "boolean" ? Number(left) : String(left ?? "");

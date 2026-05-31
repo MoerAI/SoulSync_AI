@@ -6,6 +6,7 @@ export const OPENAI_APPS_OAUTH_PROVIDER = "openai_apps_oauth";
 export const OAUTH_RESOURCE_SCOPES = ["profile.read", "profile.write", "match.run"] as const;
 export const DEFAULT_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource";
 export const LOCAL_STUB_ISSUER = "http://localhost:8787/oauth-stub";
+export const DEMO_NOAUTH_SUBJECT = "demo-user";
 
 const defaultRequiredScopes = ["profile.read"];
 
@@ -300,6 +301,13 @@ export const withMcpAuth = (
     const token = bearerToken(request.headers.get("authorization"));
 
     if (!token) {
+      if (demoNoAuthEnabled()) {
+        const claims = demoNoAuthClaims(request, options);
+        attachRequestAuth(request, "demo-noauth", claims);
+
+        return handler(request, claims);
+      }
+
       if (!required) {
         return handler(request, undefined as unknown as OAuthAccessTokenClaims);
       }
@@ -309,15 +317,7 @@ export const withMcpAuth = (
 
     try {
       const claims = await verifyOAuthAccessToken(token, options);
-      Object.defineProperty(request, "auth", {
-        configurable: true,
-        value: {
-          token,
-          clientId: claims.sub,
-          scopes: claims.scopes,
-          expiresAt: claims.exp,
-        },
-      });
+      attachRequestAuth(request, token, claims);
 
       return handler(request, claims);
     } catch (error) {
@@ -328,6 +328,42 @@ export const withMcpAuth = (
       return authErrorResponse(request, options, new OAuthAccessTokenError("invalid_token", "Invalid OAuth access token"));
     }
   };
+};
+
+const demoNoAuthClaims = (request: Request, options: WithMcpAuthOptions): OAuthAccessTokenClaims => {
+  const now = Math.floor(Date.now() / 1000);
+  const issuer = readEnv("OAUTH_ISSUER") ?? new URL(request.url).origin;
+  const audience = options.audience ?? readEnv("OAUTH_AUDIENCE") ?? options.resourceUrl ?? new URL(request.url).origin;
+  const raw: JWTPayload = {
+    iss: issuer,
+    aud: audience,
+    sub: DEMO_NOAUTH_SUBJECT,
+    iat: now,
+    exp: now + 3600,
+    scope: OAUTH_RESOURCE_SCOPES.join(" "),
+  };
+
+  return {
+    iss: issuer,
+    aud: audience,
+    exp: now + 3600,
+    iat: now,
+    sub: DEMO_NOAUTH_SUBJECT,
+    scopes: [...OAUTH_RESOURCE_SCOPES],
+    raw,
+  };
+};
+
+const attachRequestAuth = (request: Request, token: string, claims: OAuthAccessTokenClaims): void => {
+  Object.defineProperty(request, "auth", {
+    configurable: true,
+    value: {
+      token,
+      clientId: claims.sub,
+      scopes: claims.scopes,
+      expiresAt: claims.exp,
+    },
+  });
 };
 
 const verifyJwt = async (token: string, issuer: string, audience: string, options: VerifyOAuthAccessTokenOptions) => {
@@ -475,6 +511,8 @@ const resourceMetadataUrl = (request: Request, options: WithMcpAuthOptions): str
 const escapeHeaderValue = (value: string): string => value.split("\\").join("\\\\").split('"').join('\\"');
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+const demoNoAuthEnabled = (): boolean => readEnv("DEMO_NOAUTH") === "1";
 
 const readEnv = (key: string): string | undefined => {
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;

@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { MockFriendli } from "../friendli";
 import type { JudgeScore, PersonaSpec, Transcript } from "../types";
+import { demoMatchFriendli, runMatchJobInstant } from "./demoMatch";
 import { enqueueMatchJob } from "./enqueue";
 import { runMatchJob, type MatchPipelineDeps, type QueryLike, type SupabaseLike } from "./pipeline";
 
@@ -97,6 +98,51 @@ describe("runMatchJob", () => {
     expect(recommendations).toHaveLength(3);
     expect(recommendations.every((row) => row.is_synthetic === true)).toBe(true);
     expect(result.candidateStatuses.every((status) => !status.candidateId.startsWith("synthetic-fallback-"))).toBe(true);
+  });
+});
+
+describe("demo match job helpers", () => {
+  test("demoMatchFriendli scripts six Korean conversation turns and one judge score per candidate", async () => {
+    const friendli = demoMatchFriendli(2);
+    if (!(friendli instanceof MockFriendli)) {
+      throw new Error("demoMatchFriendli must return MockFriendli for deterministic demos");
+    }
+
+    for (let index = 0; index < 6; index += 1) {
+      const completion = await friendli.chat([{ role: "user", content: `turn-${index}` }]);
+      expect(completion.choices[0]?.message.content).toMatch(/안녕하세요|반갑습니다/);
+    }
+    const firstJudge = await friendli.chatJSON<JudgeScore>([{ role: "user", content: "judge" }], { type: "object" });
+    for (let index = 0; index < 6; index += 1) {
+      await friendli.chat([{ role: "user", content: `candidate-2-turn-${index}` }]);
+    }
+    const secondJudge = await friendli.chatJSON<JudgeScore>([{ role: "user", content: "judge" }], { type: "object" });
+
+    expect(firstJudge).toEqual(judgeScoreForOverall(92));
+    expect(secondJudge).toEqual(judgeScoreForOverall(85));
+    expect(friendli.calls).toHaveLength(14);
+    await expect(friendli.chat([{ role: "user", content: "extra" }])).rejects.toThrow("MockFriendli has no scripted responses left");
+  });
+
+  test("runMatchJobInstant runs the deterministic demo path and persists succeeded recommendations", async () => {
+    const client = seedClient();
+    const jobId = client.insertJob(ACTOR_ID);
+
+    const result = await runMatchJobInstant(jobId, client, { now: () => new Date(now()) });
+
+    const recommendations = client.rows.recommendations.filter((row) => row.job_id === jobId);
+    const job = client.rows.match_jobs.find((row) => row.id === jobId);
+
+    expect(result.status).toBe("succeeded");
+    expect(result.recommendations).toHaveLength(3);
+    expect(recommendations).toHaveLength(3);
+    expect(recommendations.map((row) => row.overall)).toEqual([92, 87, 80]);
+    expect(recommendations.map((row) => row.summary_ko)).toEqual([
+      "92점 추천: 대화 흐름과 가치관 신호가 안정적입니다.",
+      "85점 추천: 대화 흐름과 가치관 신호가 안정적입니다.",
+      "78점 추천: 대화 흐름과 가치관 신호가 안정적입니다.",
+    ]);
+    expect(job).toMatchObject({ status: "succeeded", progress: 100 });
   });
 });
 
@@ -231,6 +277,21 @@ const judgeScore = (candidateId: string): JudgeScore => {
     flags: ["balanced_exchange"],
     summaryKo: `${overall}점 추천`,
     rationale: "테스트 판단",
+    judgePromptVersion: "judge-rubric-2026-05-31",
+    judgeSchemaVersion: "judge-score-v1",
+  };
+};
+
+const judgeScoreForOverall = (overall: number): JudgeScore => {
+  const friction = 15 - (overall - 75);
+
+  return {
+    overall,
+    subscores: { flow: 23, coherence: 18, mutual_curiosity: 18, values_alignment: 18, friction_risk: friction },
+    confidence: 0.91,
+    flags: ["balanced_exchange"],
+    summaryKo: `${overall}점 추천: 대화 흐름과 가치관 신호가 안정적입니다.`,
+    rationale: "Deterministic e2e judge fixture.",
     judgePromptVersion: "judge-rubric-2026-05-31",
     judgeSchemaVersion: "judge-score-v1",
   };
