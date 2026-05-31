@@ -1,0 +1,30 @@
+{
+  "appUserId": "91000000-0024-4000-8000-000000000001",
+  "profileId": "92000000-0024-4000-8000-000000000001",
+  "email": "task-24-fixture@soulsync.invalid",
+  "displayName": "Task 24 Fixture",
+  "supabaseUserId": "93000000-0024-4000-8000-000000000001",
+  "gender": "female",
+  "interestedIn": ["male"],
+  "city": "서울",
+  "district": "강남구",
+  "mbti": "ENFP",
+  "religionType": "기독교",
+  "religionIntensity": 2,
+  "profileText": "책과 산책을 좋아하고 대화를 통해 천천히 알아가는 관계를 선호합니다.",
+  "values": {
+    "religion": { "type": "기독교", "intensity": 2 },
+    "familyValues": ["서로의 경계 존중하기", "부부 중심의 독립성 지키기"],
+    "lifePriorities": ["신뢰", "대화", "성장 의지"],
+    "dealbreakers": ["압박적인 만남 요구", "연락처 강요"]
+  },
+  "answers": {
+    "displayName": "Task 24 Fixture",
+    "interests": ["독서", "산책", "음악"],
+    "communicationStyle": "하루에 몇 번 깊게 연락",
+    "appeal_intro": "서로를 존중하면서 천천히 알아가고 싶습니다.",
+    "religion_type": "기독교",
+    "religion_intensity": 2
+  },
+  "consents": ["terms", "privacy", "ai_persona", "matching"]
+}

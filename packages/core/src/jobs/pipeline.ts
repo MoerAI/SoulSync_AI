@@ -150,6 +150,11 @@ export const runMatchJob = async (jobId: string, deps: MatchPipelineDeps): Promi
       return cancelledResult(jobId);
     }
 
+    if (isSyntheticFallbackCandidate(candidate)) {
+      outcomes.push({ candidate, status: { candidateId: candidate.id, status: "failed", error: "synthetic fallback placeholder is not persisted" } });
+      continue;
+    }
+
     outcomes.push(await runCandidate({ client, profile, userPersona, candidate, friendli, model, deps, now }));
     await updateJob(client, jobId, { progress: Math.min(95, 20 + outcomes.length * 20), updated_at: now() });
   }
@@ -403,6 +408,7 @@ const profileForEmbedding = (profile: ProfileRow): Profile => ({
 });
 
 const profileVersion = (profile: Pick<ProfileRow, "id" | "updated_at">): string => `${profile.id}:${profile.updated_at ?? "unversioned"}`;
+const isSyntheticFallbackCandidate = (candidate: FunnelCandidate): boolean => candidate.id.startsWith("synthetic-fallback-") || candidate.profileId.startsWith("profile-synthetic-fallback-");
 const transcriptTokens = (transcript: Transcript): number => transcript.turns.reduce((sum, turn) => sum + ("usage" in turn && isRecord(turn.usage) && typeof turn.usage.totalTokens === "number" ? turn.usage.totalTokens : Math.ceil(turn.content.length / 4)), 0);
 const clampIntensity = (value: number | null | undefined): 1 | 2 | 3 | 4 | 5 => (Math.min(5, Math.max(1, Math.round(value ?? 3))) as 1 | 2 | 3 | 4 | 5);
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
