@@ -10,7 +10,7 @@ export function Footer() {
           <p className="copyright">© 2026 SoulSync AI · Weekendthon</p>
         </div>
         <div className="footer-chips" aria-label="프로젝트 기술 태그">
-          <span className="chip">🐙 github.com/.../pairsona</span>
+          <span className="chip">🐙 github.com/MoerAI/SoulSync_AI</span>
           <span className="chip">ChatGPT Apps SDK</span>
           <span className="chip">MCP</span>
           <span className="chip">EXAONE</span>
