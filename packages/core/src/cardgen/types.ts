@@ -14,6 +14,15 @@ export const CardGenInputSchema = z
   .strict();
 export type CardGenInput = z.infer<typeof CardGenInputSchema>;
 
+export const CardGenOutputSchema = z
+  .object({
+    html: z.string(),
+    css: z.string(),
+    sourceCode: z.string().optional(),
+  })
+  .strict();
+export type CardGenOutput = z.infer<typeof CardGenOutputSchema>;
+
 export const CardArtifactSchema = z
   .object({
     version: z.string(),
