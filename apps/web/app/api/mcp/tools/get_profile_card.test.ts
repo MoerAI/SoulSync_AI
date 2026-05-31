@@ -47,6 +47,24 @@ describe("get_profile_card MCP tool", () => {
       { generate: true },
     );
   });
+
+  test("proxies only _meta photo URLs when DEMO_PHOTO_PROXY is enabled", async () => {
+    vi.stubEnv("DEMO_PHOTO_PROXY", "1");
+    vi.stubEnv("APP_BASE_URL", "https://demo.example");
+    const signedUrl = "http://127.0.0.1:54321/storage/v1/object/sign/profile-private/slot-1.jpg?token=signed-token&expires=1760000000";
+    serviceMock.getProfileCardForViewerEnsured.mockResolvedValue({
+      card: { version: "card-v1", is_synthetic: false },
+      photos: { "slot-1": signedUrl },
+    });
+
+    const response = await runWithClaims(claims(), () => getProfileCard({}));
+
+    expect(response.structuredContent).toEqual({ hasCard: true, is_synthetic: false });
+    expect(response._meta).toEqual({
+      card: { version: "card-v1", is_synthetic: false },
+      photos: { "slot-1": `https://demo.example/api/photo?src=${encodeURIComponent(signedUrl)}` },
+    });
+  });
 });
 
 const claims = () => ({

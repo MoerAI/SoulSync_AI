@@ -2,7 +2,7 @@ import { listRecommendations as listRecommendationsService, recommendationMetaFr
 import { serializeRecommendations } from "@soulsync/core/src/serializers";
 
 import { getServiceSupabase } from "../../../../lib/supabase";
-import { actorFor, ok, requireScope, type ToolResponse } from "./common";
+import { actorFor, ok, proxyPhotoUrl, requireScope, type ToolResponse } from "./common";
 import { currentClaims } from "./context";
 
 export const listRecommendationsInput = {};
@@ -10,9 +10,13 @@ export type { RecommendationMeta, RecommendationRow };
 
 export function toRecommendationResponse(rows: RecommendationRow[], meta: RecommendationMeta[] = recommendationMetaFromRows(rows)): ToolResponse {
   const structuredContent = serializeRecommendations(rows);
+  const recommendations = meta.map((recommendation) => ({
+    ...recommendation,
+    ...(recommendation.photoUrl ? { photoUrl: proxyPhotoUrl(recommendation.photoUrl) } : {}),
+  }));
 
   return ok(structuredContent, `${structuredContent.count} recommendations found.`, {
-    recommendations: meta,
+    recommendations,
   });
 }
 

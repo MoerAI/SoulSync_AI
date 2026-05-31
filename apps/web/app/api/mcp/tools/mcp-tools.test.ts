@@ -118,4 +118,48 @@ describe("MCP tool adapters", () => {
       ],
     });
   });
+
+  test("list_recommendations proxies only _meta photoUrl values when DEMO_PHOTO_PROXY is enabled", () => {
+    vi.stubEnv("DEMO_PHOTO_PROXY", "1");
+    vi.stubEnv("APP_BASE_URL", "https://demo.example");
+    const signedUrl = "http://127.0.0.1:54321/storage/v1/object/sign/profile-private/candidate-1.jpg?token=signed-token&expires=1760000000";
+    const response = toRecommendationResponse(
+      [
+        {
+          id: "rec-1",
+          job_id: "job-1",
+          candidate_id: "candidate-1",
+          rank: 1,
+          overall: 91,
+          summary_ko: "대화 흐름이 좋습니다.",
+          is_synthetic: true,
+          subscores: {},
+        },
+      ],
+      [
+        {
+          id: "rec-1",
+          candidateId: "candidate-1",
+          rank: 1,
+          subscores: {},
+          highlights: [],
+          photoUrl: signedUrl,
+        },
+      ],
+    );
+
+    expect(response.structuredContent).toEqual({ count: 1, recommendations: [{ id: "rec-1", rank: 1, overall: 91, summaryKo: "대화 흐름이 좋습니다.", is_synthetic: true }] });
+    expect(response._meta).toEqual({
+      recommendations: [
+        {
+          id: "rec-1",
+          candidateId: "candidate-1",
+          rank: 1,
+          subscores: {},
+          highlights: [],
+          photoUrl: `https://demo.example/api/photo?src=${encodeURIComponent(signedUrl)}`,
+        },
+      ],
+    });
+  });
 });

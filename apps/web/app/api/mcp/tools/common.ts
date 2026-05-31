@@ -41,3 +41,11 @@ export function asEnforcementClient(client: SupabaseClient): EnforcementClient {
 export function boolValue(value: unknown): boolean {
   return value === true;
 }
+
+export function proxyPhotoUrl(signedUrl: string): string {
+  if (process.env.DEMO_PHOTO_PROXY !== "1") {
+    return signedUrl;
+  }
+
+  return `${process.env.APP_BASE_URL ?? ""}/api/photo?src=${encodeURIComponent(signedUrl)}`;
+}

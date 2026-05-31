@@ -28,6 +28,7 @@ SUPABASE_SERVICE_ROLE_KEY=<local service_role key>
 DEMO_NOAUTH=1           # ChatGPT connects without OAuth; all calls -> one fixed demo user
 DEMO_INSTANT_CARD=1     # get_profile_card lazily generates the card on the spot (MockGgui, instant)
 DEMO_INSTANT_MATCH=1    # match job runs synchronously via the mock LLM path so recommendations appear in ~1s (no cron, no live EXAONE latency)
+DEMO_PHOTO_PROXY=1      # proxies local Supabase signed photos through the HTTPS app origin for ChatGPT iframe display
 
 # Public origin = the tunnel URL (set AFTER you get it in step 2). Must NOT be localhost.
 OAUTH_AUDIENCE=https://<your-tunnel>.trycloudflare.com

@@ -93,7 +93,11 @@ function isSignedPhotoUrl(value: unknown): value is string {
     return false;
   }
   try {
-    const parsed = new URL(url);
+    const appOrigin = typeof window === "undefined" ? "https://soulsync.local" : window.location.origin;
+    const parsed = new URL(url, appOrigin);
+    if (parsed.origin === appOrigin && parsed.pathname === "/api/photo" && parsed.searchParams.has("src")) {
+      return true;
+    }
     const params = parsed.searchParams;
     return ["token", "expires", "expiry", "signature", "X-Amz-Signature"].some((key) => params.has(key));
   } catch {
