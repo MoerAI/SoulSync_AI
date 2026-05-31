@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { callTool, handleToolResult, notifyIntrinsicHeight, setWidgetState, type ToolResult } from "../bridge";
-import { Badge, Button, Card, EmptyState, ErrorState, ProgressBar, SyntheticBadge } from "../components";
+import { Badge, BrandLogo, Button, Card, EmptyState, ErrorState, ProgressBar, SyntheticBadge } from "../components";
 import { GlobalStyles } from "../theme";
 import "./styles.css";
 
@@ -93,7 +93,7 @@ function isSignedPhotoUrl(value: unknown): value is string {
     return false;
   }
   try {
-    const appOrigin = typeof window === "undefined" ? "https://soulsync.local" : window.location.origin;
+    const appOrigin = (typeof window !== "undefined" && window.__SOULSYNC_APP_ORIGIN__) || (typeof window !== "undefined" ? window.location.origin : "https://soulsync.local");
     const parsed = new URL(url, appOrigin);
     if (parsed.origin === appOrigin && parsed.pathname === "/api/photo" && parsed.searchParams.has("src")) {
       return true;
@@ -309,7 +309,10 @@ export function RecommendationsWidget({ initialResult }: RecommendationsWidgetPr
       <Card className="ssw-rec-hero" padding="lg">
         <div className="ssw-rec-hero__row">
           <div>
-            <Badge text="SoulSync AI" variant="success" />
+            <div className="ssw-brand-lockup">
+              <BrandLogo />
+              <Badge text="SoulSync AI" variant="success" />
+            </div>
             <h1>추천 매칭 후보</h1>
             <p>서버 스냅샷의 공개 정보와 위젯 전용 서명 사진만 사용해 보여드려요.</p>
           </div>

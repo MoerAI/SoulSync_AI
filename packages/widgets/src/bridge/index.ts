@@ -14,6 +14,7 @@ export type OpenAIWidgetBridge = {
 
 declare global {
   interface Window {
+    __SOULSYNC_APP_ORIGIN__?: string;
     openai?: OpenAIWidgetBridge;
   }
 }

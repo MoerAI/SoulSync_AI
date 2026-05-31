@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { callTool, notifyIntrinsicHeight, setWidgetState, uploadFile } from "../bridge";
-import { Badge, Button, Card, EmptyState, ErrorState, Field, ProgressBar, Stepper, SyntheticBadge } from "../components";
+import { Badge, BrandLogo, Button, Card, EmptyState, ErrorState, Field, ProgressBar, Stepper, SyntheticBadge } from "../components";
 import { CONSENT_ITEMS, ConsentScreen, createEmptyConsent, getMissingRequiredConsents, type ConsentKey, type ConsentState } from "../consent";
 import { GlobalStyles } from "../theme";
 import { normalizeProfileCard, SanitizedProfileCard, type ProfileCardSnapshot } from "../profile-card";
@@ -32,7 +32,7 @@ type PhotoState = {
   status: "idle" | "pending" | "unavailable" | "error";
 };
 
-type DemoStage = "card" | "matching";
+type DemoStage = "card" | "matching" | "match-card";
 
 type FormState = {
   step: number;
@@ -43,6 +43,7 @@ type FormState = {
   persona?: PersonaSpec;
   demoStage?: DemoStage;
   matchJobId?: string;
+  matchCandidateId?: string;
 };
 
 const STORAGE_KEY = "soulsync.profile-form.v1";
@@ -73,8 +74,9 @@ function readStoredState(): FormState {
       ...parsed,
       consent: { ...createEmptyConsent(), ...parsed.consent },
       photo: parsed.photo ?? { status: "idle" },
-      demoStage: parsed.demoStage === "card" || parsed.demoStage === "matching" ? parsed.demoStage : undefined,
-      matchJobId: typeof parsed.matchJobId === "string" ? parsed.matchJobId : undefined
+      demoStage: parsed.demoStage === "card" || parsed.demoStage === "matching" || parsed.demoStage === "match-card" ? parsed.demoStage : undefined,
+      matchJobId: typeof parsed.matchJobId === "string" ? parsed.matchJobId : undefined,
+      matchCandidateId: typeof parsed.matchCandidateId === "string" ? parsed.matchCandidateId : undefined
     };
   } catch {
     return createInitialState();
@@ -220,7 +222,8 @@ function serializeState(state: FormState) {
     photo: state.photo,
     persona: state.persona,
     demoStage: state.demoStage,
-    matchJobId: state.matchJobId
+    matchJobId: state.matchJobId,
+    matchCandidateId: state.matchCandidateId
   };
 }
 
@@ -285,6 +288,9 @@ export function ProfileFormWidget() {
   const [profileCardSnapshot, setProfileCardSnapshot] = useState<ProfileCardSnapshot>({ photos: {} });
   const [profileCardLoading, setProfileCardLoading] = useState(false);
   const [profileCardError, setProfileCardError] = useState<string>();
+  const [matchCardSnapshot, setMatchCardSnapshot] = useState<ProfileCardSnapshot>({ photos: {} });
+  const [matchCardLoading, setMatchCardLoading] = useState(false);
+  const [matchCardError, setMatchCardError] = useState<string>();
   const [recommendationsSnapshot, setRecommendationsSnapshot] = useState<RecommendationsSnapshot>({ recommendations: [] });
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [matchingStatus, setMatchingStatus] = useState("매칭 중...");
@@ -302,7 +308,7 @@ export function ProfileFormWidget() {
 
   useEffect(() => {
     notifyIntrinsicHeight(document.documentElement.scrollHeight);
-  }, [profileCardSnapshot, profileCardLoading, profileCardError, recommendationsSnapshot, recommendationsLoading, matchingStatus]);
+  }, [profileCardSnapshot, profileCardLoading, profileCardError, matchCardSnapshot, matchCardLoading, matchCardError, recommendationsSnapshot, recommendationsLoading, matchingStatus]);
 
   useEffect(() => {
     if (state.step === 6 && !state.persona && !saving) {
@@ -337,6 +343,12 @@ export function ProfileFormWidget() {
       void loadRecommendationsAfterJob(state.matchJobId);
     }
   }, [state.demoStage, state.matchJobId, recommendationsSnapshot.recommendations.length, recommendationsLoading]);
+
+  useEffect(() => {
+    if (state.demoStage === "match-card" && state.matchCandidateId && !matchCardSnapshot.card && !matchCardLoading) {
+      void loadMatchProfileCard(state.matchCandidateId);
+    }
+  }, [state.demoStage, state.matchCandidateId, matchCardSnapshot.card, matchCardLoading]);
 
   async function persistStep(stepName: string, payload: unknown) {
     setSaving(true);
@@ -454,6 +466,19 @@ export function ProfileFormWidget() {
     }
   }
 
+  async function loadMatchProfileCard(candidateId: string) {
+    setMatchCardLoading(true);
+    setMatchCardError(undefined);
+    try {
+      const result = await callTool("get_profile_card", { candidateId });
+      setMatchCardSnapshot(normalizeProfileCard(result));
+    } catch (toolError) {
+      setMatchCardError(toolError instanceof Error ? toolError.message : "상대 프로필 카드를 불러오지 못했어요.");
+    } finally {
+      setMatchCardLoading(false);
+    }
+  }
+
   async function loadRecommendationsAfterJob(jobId: string) {
     setRecommendationsLoading(true);
     setMatchingStatus("매칭 중...");
@@ -463,9 +488,16 @@ export function ProfileFormWidget() {
         const result = await callTool("get_match_job", { jobId });
         const status = jobStatusFrom(result);
         if (status === "succeeded") {
-          const recommendations = await callTool("list_recommendations", {});
-          setRecommendationsSnapshot(normalizeRecommendations(recommendations));
+          const recommendationsResult = await callTool("list_recommendations", {});
+          const recommendations = normalizeRecommendations(recommendationsResult);
+          setRecommendationsSnapshot(recommendations);
           setMatchingStatus("매칭 결과가 준비됐어요.");
+          const candidateId = recommendations.recommendations[0]?.candidateId;
+          if (candidateId) {
+            setMatchCardSnapshot({ photos: {} });
+            setState((current) => ({ ...current, demoStage: "match-card", matchCandidateId: candidateId }));
+            await loadMatchProfileCard(candidateId);
+          }
           return;
         }
         if (status === "failed" || status === "cancelled") {
@@ -718,6 +750,25 @@ export function ProfileFormWidget() {
     );
   }
 
+  function renderMatchCardStage() {
+    return (
+      <Card className="ssw-profile-demo-card" padding="lg">
+        <div className="ssw-profile-card-header">
+          <div>
+            <Badge text="Demo Flow" variant="success" />
+            <h1>당신과 가장 잘 맞는 상대</h1>
+            <p>대화 평가에서 가장 높은 궁합 신호를 보인 상대의 공개 카드와 위젯 전용 서명 사진만 보여드려요.</p>
+          </div>
+          <SyntheticBadge is_synthetic={Boolean(matchCardSnapshot.card?.is_synthetic)} />
+        </div>
+        {matchCardError ? <ErrorState description={matchCardError} onRetry={() => state.matchCandidateId ? loadMatchProfileCard(state.matchCandidateId) : undefined} title="상대 프로필 카드를 불러오지 못했어요" /> : null}
+        {!matchCardError && matchCardLoading ? <EmptyState description="가장 잘 맞는 상대의 카드와 안전한 사진 링크를 불러오는 중입니다." title="상대 카드 준비 중" /> : null}
+        {!matchCardError && !matchCardLoading && !matchCardSnapshot.card ? <EmptyState description="추천 후보 카드를 준비하는 중입니다." title="상대 카드 준비 중" /> : null}
+        {!matchCardError && matchCardSnapshot.card ? <SanitizedProfileCard onPhotoSlotsBound={handlePhotoSlotsBound} snapshot={matchCardSnapshot} /> : null}
+      </Card>
+    );
+  }
+
   return (
     <div className="ssw-scope ssw-profile-shell">
       <GlobalStyles />
@@ -725,7 +776,10 @@ export function ProfileFormWidget() {
       <Card className="ssw-profile-hero" padding="lg">
         <div className="ssw-profile-row ssw-profile-row--between">
           <div>
-            <Badge text="SoulSync AI" variant="success" />
+            <div className="ssw-brand-lockup">
+              <BrandLogo />
+              <Badge text="SoulSync AI" variant="success" />
+            </div>
             <h1>프로필 온보딩</h1>
             <p>40문항과 동의를 바탕으로 안전한 매칭 페르소나를 준비합니다.</p>
           </div>
@@ -757,6 +811,7 @@ export function ProfileFormWidget() {
       {!state.demoStage && state.step === 6 ? renderPersona() : null}
       {state.demoStage === "card" ? renderProfileCardStage() : null}
       {state.demoStage === "matching" ? renderMatchingStage() : null}
+      {state.demoStage === "match-card" ? renderMatchCardStage() : null}
     </div>
   );
 }

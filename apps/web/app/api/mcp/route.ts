@@ -30,6 +30,12 @@ export const dynamic = "force-dynamic";
 
 const RESOURCE_MIME_TYPE = "text/html+skybridge";
 
+const serverInfo = {
+  name: "soulsync-ai",
+  version: "0.1.0",
+  icons: [{ src: `${process.env.APP_BASE_URL ?? ""}/soulsync-mark.png`, mimeType: "image/png", sizes: ["any"] }]
+};
+
 const mcpHandler = createMcpHandler(
   async (server) => {
     registerDataTools(server);
@@ -37,7 +43,7 @@ const mcpHandler = createMcpHandler(
     await registerWidgetResources(server);
   },
   {
-    serverInfo: { name: "soulsync-ai", version: "0.1.0" },
+    serverInfo,
     instructions:
       "SoulSync AI helps lonely users create a profile and find compatible matches. When the user expresses loneliness, isolation, or a wish for connection/dating/companionship (Korean: 외로워, 외롭다, 혼자야, 친구가 필요해, 연애하고 싶어; English: I'm lonely, I feel alone, find me a match), immediately call render_profile_form WITHOUT asking clarifying questions. After the form is submitted, follow the widget results to show the generated profile card and recommendations.",
   },
@@ -234,7 +240,7 @@ async function registerWidgetResources(server: McpServerLike): Promise<void> {
 
 async function registerWidgetResource(server: McpServerLike, widgetName: WidgetResourceName, resourceUri: string, description: string): Promise<void> {
   const bundle = await readWidgetBundle(widgetName);
-  const html = inlineWidget(widgetName, bundle.js, bundle.css);
+  const html = inlineWidget(widgetName, bundle.js, bundle.css, appOriginFromAudience());
   server.registerResource(
     widgetName,
     resourceUri,
@@ -279,11 +285,15 @@ function renderToolConfig(title: string, description: string, resourceUri: strin
 }
 
 function widgetCsp(): { connectDomains: string[]; resourceDomains: string[] } {
-  const origin = process.env.OAUTH_AUDIENCE ? new URL(process.env.OAUTH_AUDIENCE).origin : "http://localhost:3000";
+  const origin = appOriginFromAudience() || "http://localhost:3000";
   const supabaseOrigin = process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).origin : undefined;
   const connectDomains = [origin, supabaseOrigin].filter((domain): domain is string => Boolean(domain));
 
   return { connectDomains, resourceDomains: connectDomains };
+}
+
+function appOriginFromAudience(): string {
+  return process.env.OAUTH_AUDIENCE ? new URL(process.env.OAUTH_AUDIENCE).origin : "";
 }
 
 type ToolConfig = {

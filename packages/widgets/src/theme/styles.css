@@ -77,6 +77,20 @@
   line-height: 1.5;
 }
 
+.ssw-brand-lockup {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--ssw-space-2);
+}
+
+.ssw-brand-logo {
+  border-radius: var(--ssw-radius-sm);
+  display: block;
+  height: var(--ssw-space-8);
+  object-fit: contain;
+  width: var(--ssw-space-8);
+}
+
 .ssw-button {
   align-items: center;
   border: 1px solid transparent;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { callTool, handleToolResult, notifyIntrinsicHeight, setWidgetState, type ToolResult } from "../bridge";
-import { Badge, Card, EmptyState, ErrorState, SyntheticBadge } from "../components";
+import { Badge, BrandLogo, Card, EmptyState, ErrorState, SyntheticBadge } from "../components";
 import { GlobalStyles } from "../theme";
 import { normalizeProfileCard, SanitizedProfileCard, type ProfileCardSnapshot } from "./rendering";
 import "./styles.css";
@@ -59,7 +59,10 @@ export function ProfileCardWidget({ initialResult }: ProfileCardWidgetProps) {
       <Card className="ssw-profile-card-frame" padding="lg">
         <div className="ssw-profile-card-header">
           <div>
-            <Badge text="SoulSync AI" variant="success" />
+            <div className="ssw-brand-lockup">
+              <BrandLogo />
+              <Badge text="SoulSync AI" variant="success" />
+            </div>
             <h1>프로필 카드</h1>
             <p>매칭된 사용자에게 공개 가능한 카드와 위젯 전용 서명 사진만 보여드려요.</p>
           </div>

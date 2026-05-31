@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { normalizeRecommendations } from "./index";
+
+afterEach(() => {
+  Reflect.deleteProperty(window, "__SOULSYNC_APP_ORIGIN__");
+});
 
 describe("normalizeRecommendations", () => {
   it("accepts signed Supabase photo URLs", () => {
@@ -14,6 +18,16 @@ describe("normalizeRecommendations", () => {
 
   it("accepts same-origin photo proxy URLs with a src param", () => {
     const proxyUrl = "/api/photo?src=http%3A%2F%2F127.0.0.1%3A54321%2Fstorage%2Fv1%2Fobject%2Fsign%2Fprofiles%2Fcandidate-1.jpg%3Ftoken%3Dsigned-one";
+
+    const snapshot = normalizeRecommendations(recommendationsResult([{ candidateId: "candidate-1", photoUrl: proxyUrl }]));
+
+    expect(snapshot.recommendations[0].photoSignedUrl).toBe(proxyUrl);
+  });
+
+  it("accepts app-origin absolute photo proxy URLs in the ChatGPT iframe", () => {
+    const appOrigin = "https://soul-demo.example";
+    Object.defineProperty(window, "__SOULSYNC_APP_ORIGIN__", { configurable: true, value: appOrigin });
+    const proxyUrl = `${appOrigin}/api/photo?src=http%3A%2F%2F127.0.0.1%3A54321%2Fstorage%2Fv1%2Fobject%2Fsign%2Fprofiles%2Fcandidate-1.jpg%3Ftoken%3Dsigned-one`;
 
     const snapshot = normalizeRecommendations(recommendationsResult([{ candidateId: "candidate-1", photoUrl: proxyUrl }]));
 

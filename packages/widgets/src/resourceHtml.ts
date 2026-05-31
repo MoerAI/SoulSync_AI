@@ -29,6 +29,8 @@ function mountElement(widgetName: WidgetResourceName, options: InlineWidgetOptio
   return `<div ${mountAttributes[widgetName]}${dataJobId}></div>`;
 }
 
-export function inlineWidget(widgetName: WidgetResourceName, js: string, css: string, options: InlineWidgetOptions = {}): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${escapeStyleBlock(css)}</style></head><body>${mountElement(widgetName, options)}<script type="module">${escapeInlineScript(js)}</script></body></html>`;
+export function inlineWidget(widgetName: WidgetResourceName, js: string, css: string, appOrigin = "", options: InlineWidgetOptions = {}): string {
+  const appOriginScript = escapeInlineScript(`window.__SOULSYNC_APP_ORIGIN__=${JSON.stringify(appOrigin)}`);
+
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${escapeStyleBlock(css)}</style></head><body>${mountElement(widgetName, options)}<script>${appOriginScript}</script><script type="module">${escapeInlineScript(js)}</script></body></html>`;
 }

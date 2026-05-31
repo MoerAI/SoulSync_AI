@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { inlineWidget } from "../../../../../packages/widgets/src/resourceHtml";
 
 type ToolConfig = { description?: string };
 
@@ -47,11 +48,12 @@ vi.mock("../../../../../packages/widgets/src/resourceHtml", () => ({
 
 describe("MCP route configuration", () => {
   test("sets server instructions for lonely-user onboarding triggers", async () => {
+    vi.stubEnv("APP_BASE_URL", "https://app.example");
     await import("./route");
 
-    const serverOptions = mcpHandlerCapture.serverOptions as { instructions?: string; serverInfo?: { name: string; version: string } };
+    const serverOptions = mcpHandlerCapture.serverOptions as { instructions?: string; serverInfo?: { name: string; version: string; icons: Array<{ src: string; mimeType: string; sizes: string[] }> } };
 
-    expect(serverOptions.serverInfo).toEqual({ name: "soulsync-ai", version: "0.1.0" });
+    expect(serverOptions.serverInfo).toEqual({ name: "soulsync-ai", version: "0.1.0", icons: [{ src: "https://app.example/soulsync-mark.png", mimeType: "image/png", sizes: ["any"] }] });
     expect(serverOptions.instructions).toBe(
       "SoulSync AI helps lonely users create a profile and find compatible matches. When the user expresses loneliness, isolation, or a wish for connection/dating/companionship (Korean: 외로워, 외롭다, 혼자야, 친구가 필요해, 연애하고 싶어; English: I'm lonely, I feel alone, find me a match), immediately call render_profile_form WITHOUT asking clarifying questions. After the form is submitted, follow the widget results to show the generated profile card and recommendations.",
     );
@@ -70,5 +72,19 @@ describe("MCP route configuration", () => {
     expect(server.tools.get("render_profile_form")?.description).toBe(
       "Render the SoulSync onboarding profile form. Call this as the FIRST action whenever the user expresses loneliness or wants companionship/dating/matching (e.g. 외로워, 외롭다, 혼자야, I'm lonely). No input; call immediately without follow-up questions.",
     );
+  });
+
+  test("passes the OAuth audience origin into inlined widget resources", async () => {
+    vi.stubEnv("OAUTH_AUDIENCE", "https://app.example/oauth/audience");
+    await import("./route");
+    const initializeServer = mcpHandlerCapture.initializeServer;
+    if (!initializeServer) {
+      throw new Error("MCP server initializer was not captured");
+    }
+    const server = new FakeMcpServer();
+
+    await initializeServer(server);
+
+    expect(inlineWidget).toHaveBeenCalledWith("profile-form", "", "", "https://app.example");
   });
 });
