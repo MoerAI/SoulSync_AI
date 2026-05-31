@@ -1,4 +1,4 @@
-// @ts-expect-error Supabase Edge Functions resolve npm specifiers in Deno.
+/// <reference path="./deno.d.ts" />
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import type { FriendliLike } from "../../../packages/core/src/friendli/index.ts";
@@ -26,7 +26,7 @@ type WorkerSummary = {
 
 Deno.serve(async (request) => {
   const auth = authenticateCron(request);
-  if (!auth.ok) {
+  if (auth.ok === false) {
     return json({ ok: false, error: auth.error }, auth.status);
   }
 

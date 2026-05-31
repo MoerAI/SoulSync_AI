@@ -8,6 +8,10 @@ export type FriendliChatOptions = {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  timeout?: number;
+  enable_thinking?: boolean;
+  top_p?: number;
+  stop?: string | string[];
 };
 
 export type FriendliConfig = {
@@ -19,10 +23,15 @@ export type FriendliConfig = {
 
 export type JsonSchema = Record<string, unknown>;
 
+export type FriendliChatRequest = ChatCompletionCreateParamsNonStreaming & {
+  timeout?: number;
+  chat_template_kwargs?: { enable_thinking: boolean };
+};
+
 export interface FriendliHttpClient {
   chat: {
     completions: {
-      create: (request: ChatCompletionCreateParamsNonStreaming) => Promise<ChatCompletion>;
+      create: (request: FriendliChatRequest) => Promise<ChatCompletion>;
     };
   };
 }
@@ -57,23 +66,13 @@ export class FriendliClient implements FriendliLike {
   }
 
   async chat(messages: ChatCompletionMessageParam[], opts: FriendliChatOptions = {}): Promise<ChatCompletion> {
-    return this.withRetry(() =>
-      this.httpClient.chat.completions.create({
-        messages,
-        model: opts.model ?? this.model,
-        temperature: opts.temperature,
-        max_tokens: opts.maxTokens,
-      }),
-    );
+    return this.withRetry(() => this.httpClient.chat.completions.create(this.requestFor(messages, opts)));
   }
 
   async chatJSON<T>(messages: ChatCompletionMessageParam[], jsonSchema: JsonSchema, opts: FriendliChatOptions = {}): Promise<T> {
     const completion = await this.withRetry(() =>
       this.httpClient.chat.completions.create({
-        messages,
-        model: opts.model ?? this.model,
-        temperature: opts.temperature,
-        max_tokens: opts.maxTokens,
+        ...this.requestFor(messages, opts),
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -92,6 +91,19 @@ export class FriendliClient implements FriendliLike {
     }
 
     return parseJsonWithRepair<T>(content);
+  }
+
+  private requestFor(messages: ChatCompletionMessageParam[], opts: FriendliChatOptions): FriendliChatRequest {
+    return {
+      messages,
+      model: opts.model ?? this.model,
+      temperature: opts.temperature,
+      max_tokens: opts.maxTokens,
+      timeout: opts.timeout,
+      top_p: opts.top_p,
+      stop: opts.stop,
+      chat_template_kwargs: opts.enable_thinking === undefined ? undefined : { enable_thinking: opts.enable_thinking },
+    };
   }
 
   private async withRetry<T>(operation: () => Promise<T>): Promise<T> {

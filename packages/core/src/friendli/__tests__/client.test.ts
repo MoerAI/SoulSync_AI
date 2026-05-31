@@ -61,6 +61,47 @@ describe("FriendliClient", () => {
     expect(mock.calls[0]).not.toHaveProperty("tools");
   });
 
+
+  test("chat() and chatJSON() forward Friendli request options", async () => {
+    const chatMock = new MockFriendli([{ status: 200, body: "hello" }]);
+    const chatClient = new FriendliClient({ httpClient: chatMock.asHttpClient() });
+
+    await chatClient.chat(messages, {
+      timeout: 2500,
+      enable_thinking: true,
+      top_p: 0.9,
+      stop: ["</answer>"],
+    });
+
+    expect(chatMock.calls[0]).toMatchObject({
+      timeout: 2500,
+      top_p: 0.9,
+      stop: ["</answer>"],
+      chat_template_kwargs: { enable_thinking: true },
+    });
+
+    const jsonMock = new MockFriendli([{ status: 200, body: { overall: 88 } }]);
+    const jsonClient = new FriendliClient({ httpClient: jsonMock.asHttpClient() });
+
+    await jsonClient.chatJSON(messages, schema, {
+      timeout: 3000,
+      enable_thinking: false,
+      top_p: 0.8,
+      stop: "</json>",
+    });
+
+    expect(jsonMock.calls[0]).toMatchObject({
+      timeout: 3000,
+      top_p: 0.8,
+      stop: "</json>",
+      chat_template_kwargs: { enable_thinking: false },
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "response", schema, strict: true },
+      },
+    });
+  });
+
   test("chatJSON with non-JSON twice throws a controlled error", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);

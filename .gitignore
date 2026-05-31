@@ -8,3 +8,4 @@ coverage
 .omo
 supabase/.branches
 supabase/.temp
+*.tsbuildinfo
