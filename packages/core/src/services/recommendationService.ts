@@ -114,6 +114,36 @@ const signedPrimaryPhotosByCandidate = async (candidateIds: string[], { client }
   return signedByCandidate;
 };
 
+export const signedDisplayablePhotosByCandidate = async (candidateIds: string[], { client }: CoreServiceContext, limit = 3): Promise<Map<string, string[]>> => {
+  if (candidateIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await client.from("photos").select("id, app_user_id, bucket, path, moderation_status, is_primary").in("app_user_id", candidateIds).eq("bucket", "profile-private").order("is_primary", { ascending: false }).returns<PhotoRow[]>();
+  if (error || !data) {
+    return new Map();
+  }
+
+  const signedByCandidate = new Map<string, string[]>();
+  for (const photo of displayablePhotos(data)) {
+    const existingUrls = signedByCandidate.get(photo.app_user_id) ?? [];
+    if (existingUrls.length >= limit) {
+      continue;
+    }
+
+    const { data: signed } = await client.storage.from("profile-private").createSignedUrl(photo.path, 60 * 10);
+    if (signed?.signedUrl) {
+      if (existingUrls.length === 0) {
+        signedByCandidate.set(photo.app_user_id, [signed.signedUrl]);
+      } else {
+        existingUrls.push(signed.signedUrl);
+      }
+    }
+  }
+
+  return signedByCandidate;
+};
+
 export const recommendationMetaFromRows = (rows: RecommendationSerializableRow[]): RecommendationMeta[] =>
   rows.map((row) => ({
     id: row.id,
