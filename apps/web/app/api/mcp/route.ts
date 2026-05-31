@@ -22,6 +22,7 @@ import { saveProfileConsent, saveProfileConsentInput } from "./tools/save_profil
 import { saveProfileStep, saveProfileStepInput } from "./tools/save_profile_step";
 import { saveRecommendation, saveRecommendationInput } from "./tools/save_recommendation";
 import { startMatchJob, startMatchJobInput } from "./tools/start_match_job";
+import { startProfileCardJob, startProfileCardJobInput } from "./tools/start_profile_card_job";
 import { updatePersona, updatePersonaInput } from "./tools/update_persona";
 import { uploadProfilePhoto, uploadProfilePhotoInput } from "./tools/upload_profile_photo";
 
@@ -118,6 +119,16 @@ function registerDataTools(server: McpServerLike): void {
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     startMatchJob,
+  );
+  server.registerTool(
+    "start_profile_card_job",
+    {
+      title: "Start Profile Card Job",
+      description: "Enqueue a background SoulSync profile card generation job.",
+      inputSchema: startProfileCardJobInput,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    startProfileCardJob,
   );
   server.registerTool(
     "get_match_job",

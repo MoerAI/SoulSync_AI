@@ -11,6 +11,7 @@ import { saveProfileConsentInput } from "./save_profile_consent";
 import { saveProfileStepInput } from "./save_profile_step";
 import { saveRecommendationInput } from "./save_recommendation";
 import { startMatchJobInput } from "./start_match_job";
+import { startProfileCardJobInput } from "./start_profile_card_job";
 import { updatePersonaInput } from "./update_persona";
 import { uploadProfilePhotoInput } from "./upload_profile_photo";
 
@@ -23,6 +24,7 @@ export const dataToolInputSchemas = {
   update_persona: updatePersonaInput,
   upload_profile_photo: uploadProfilePhotoInput,
   start_match_job: startMatchJobInput,
+  start_profile_card_job: startProfileCardJobInput,
   get_match_job: getMatchJobInput,
   get_profile_card: getProfileCardInput,
   list_recommendations: listRecommendationsInput,

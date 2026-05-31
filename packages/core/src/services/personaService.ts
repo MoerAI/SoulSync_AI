@@ -1,5 +1,6 @@
 import { generatePersona as generateCorePersona, updatePersona as updateCorePersona, type PersonaConsent, type PersonaPreview, type PersonaTalkingPoints } from "../persona";
 import type { PersonaSpec, Profile } from "../types";
+import { enqueueProfileCardGeneration } from "./profileCardService";
 import type { CoreServiceContext } from "./types";
 
 type ProfileRow = {
@@ -25,6 +26,12 @@ export const generatePersonaForActor = async (input: { consent?: PersonaConsent 
     throw new Error("Unable to save generated persona");
   }
 
+  try {
+    await enqueueProfileCardGeneration(context.actor.appUserId, context);
+  } catch (enqueueError) {
+    console.warn("profile card enqueue failed", enqueueError);
+  }
+
   return persona;
 };
 
@@ -45,13 +52,14 @@ export const updatePersonaForActor = async (input: { updates: Partial<PersonaSpe
 };
 
 export const loadProfileForPersona = async ({ client, actor }: CoreServiceContext): Promise<Profile> => {
-  const [{ data: profileRow, error: profileError }, { data: answerRows, error: answerError }] = await Promise.all([
+  const [{ data: profileRow, error: profileError }, answerResult] = await Promise.all([
     client.from("profiles").select("id, app_user_id, visibility, is_synthetic, city, district, salary_band, profile_text").eq("app_user_id", actor.appUserId).single<ProfileRow>(),
-    client.from("profile_answers").select("question_id, answer").eq("app_user_id", actor.appUserId).returns<AnswerRow[]>(),
+    client.from("profile_answers").select("question_id, answer").eq("app_user_id", actor.appUserId),
   ]);
-  if (profileError || !profileRow || answerError) {
+  if (profileError || !profileRow || answerResult.error) {
     throw new Error("Unable to load profile for persona generation");
   }
+  const answerRows = (answerResult.data ?? []) as unknown as AnswerRow[];
 
   return {
     id: profileRow.id,

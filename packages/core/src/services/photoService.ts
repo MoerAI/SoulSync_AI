@@ -1,4 +1,5 @@
 import { moderatePhoto, type PhotoClassifier, type PhotoModerationReason } from "../safety/moderation";
+import { enqueueProfileCardGeneration } from "./profileCardService";
 import type { CoreServiceContext } from "./types";
 
 export type UploadedPhotoBytes = { buffer: Uint8Array; mimeType: string };
@@ -25,6 +26,12 @@ export const uploadProfilePhoto = async (input: { fileName: string; source: Uplo
   const { data, error } = await client.from("photos").insert({ app_user_id: actor.appUserId, bucket: "profile-private", path, moderation_status: moderation.status, is_primary: false }).select("id").single<{ id: string }>();
   if (error || !data) {
     throw new Error("Unable to save profile photo");
+  }
+
+  try {
+    await enqueueProfileCardGeneration(actor.appUserId, { client, actor });
+  } catch (enqueueError) {
+    console.warn("profile card enqueue failed", enqueueError);
   }
 
   return { photoId: data.id, status: moderation.status };

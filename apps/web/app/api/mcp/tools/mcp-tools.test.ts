@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
+import type { McpActor } from "@soulsync/core/src/identity/index";
 import type { SupabaseLike } from "@soulsync/core/src/jobs/pipeline";
 import { startMatchJobTool } from "./start_match_job";
+import { startProfileCardJobTool } from "./start_profile_card_job";
 import { toRecommendationResponse } from "./list_recommendations";
 
 const unusedClient: SupabaseLike = {
@@ -24,6 +26,17 @@ describe("MCP tool adapters", () => {
 
     expect(startMatchJob).toHaveBeenCalledOnce();
     expect(response.structuredContent).toEqual({ jobId: "job-123", status: "queued" });
+  });
+
+  test("start_profile_card_job returns whether profile card generation was enqueued", async () => {
+    const actor: McpActor = { source: "mcp", id: "user-123", appUserId: "user-123", scopes: ["profile.write"] };
+    const enqueueProfileCardGeneration = vi.fn().mockResolvedValue({ enqueued: true, jobId: "profile-card-job-123" });
+    const response = await startProfileCardJobTool(actor, unusedClient, { enqueueProfileCardGeneration });
+
+    expect(enqueueProfileCardGeneration).toHaveBeenCalledWith("user-123", expect.objectContaining({ actor }));
+    expect(response.structuredContent).toEqual({ enqueued: true });
+    expect(response.content).toEqual([{ type: "text", text: "Profile card generation queued." }]);
+    expect(response._meta).toEqual({});
   });
 
   test("list_recommendations structuredContent omits sensitive candidate details", () => {
