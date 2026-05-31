@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { callTool, notifyIntrinsicHeight, setWidgetState, uploadFile } from "../bridge";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, ProgressBar, Stepper, SyntheticBadge } from "../components";
-import { ConsentScreen, createEmptyConsent, getMissingRequiredConsents, type ConsentKey, type ConsentState } from "../consent";
+import { CONSENT_ITEMS, ConsentScreen, createEmptyConsent, getMissingRequiredConsents, type ConsentKey, type ConsentState } from "../consent";
 import { GlobalStyles } from "../theme";
 import "./styles.css";
 import { ALL_PROFILE_QUESTIONS, PROFILE_QUESTIONS_SOURCE, QUESTION_SECTIONS, type ProfileQuestion, type QuestionSection } from "./questions";
@@ -143,6 +143,18 @@ function normalizePersona(result: unknown, state: FormState): PersonaSpec {
     return fallback;
   }
   const maybe = "structuredContent" in result ? (result as { structuredContent?: unknown }).structuredContent : result;
+  const meta = "_meta" in result ? (result as { _meta?: unknown })._meta : undefined;
+  const metaPersona = meta && typeof meta === "object" && "persona" in meta ? (meta as { persona?: unknown }).persona : undefined;
+  if (metaPersona && typeof metaPersona === "object") {
+    const candidate = metaPersona as Partial<PersonaSpec>;
+    return {
+      ...fallback,
+      ...candidate,
+      interests: Array.isArray(candidate.interests) ? candidate.interests.map(String) : fallback.interests,
+      boundaries: Array.isArray(candidate.boundaries) ? candidate.boundaries.map(String) : fallback.boundaries,
+      is_synthetic: Boolean(candidate.is_synthetic)
+    };
+  }
   if (!maybe || typeof maybe !== "object") {
     return fallback;
   }
@@ -257,7 +269,7 @@ export function ProfileFormWidget() {
     setSaving(true);
     setError(undefined);
     try {
-      await callTool("save_profile_step", { step: stepName, payload });
+      await callTool("save_profile_step", { step: stepName, data: payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { value: payload } });
     } catch (toolError) {
       setError(toolError instanceof Error ? toolError.message : "저장 중 문제가 발생했어요.");
       throw toolError;
@@ -270,7 +282,7 @@ export function ProfileFormWidget() {
     setSaving(true);
     setError(undefined);
     try {
-      await callTool("save_profile_consent", { consent, grantedAt: new Date().toISOString() });
+      await callTool("save_profile_consent", { consents: CONSENT_ITEMS.map((item) => ({ scope: item.key, granted: consent[item.key] })), version: "2026-05-31" });
     } catch (toolError) {
       setError(toolError instanceof Error ? toolError.message : "동의 저장 중 문제가 발생했어요.");
       throw toolError;
@@ -321,17 +333,13 @@ export function ProfileFormWidget() {
     setSaving(true);
     setError(undefined);
     try {
-      const result = await callTool("generate_persona", {
-        answers: state.answers,
-        consent: state.consent,
-        photoFileId: state.photo.fileId,
-        regenerate: markRegenerate
-      });
+      void markRegenerate;
+      const result = await callTool("generate_persona", {});
       const persona = normalizePersona(result, state);
       setState((current) => ({ ...current, persona }));
       setPersonaDraft(persona);
       setPersonaEditing(false);
-      await callTool("save_profile_step", { step: "persona_preview", payload: { persona } });
+      await callTool("save_profile_step", { step: "persona_preview", data: { persona } });
     } catch (toolError) {
       const persona = fallbackPersona(state);
       setState((current) => ({ ...current, persona }));
@@ -349,8 +357,8 @@ export function ProfileFormWidget() {
     setSaving(true);
     setError(undefined);
     try {
-      await callTool("update_persona", { persona: personaDraft });
-      await callTool("save_profile_step", { step: "persona_edit", payload: { persona: personaDraft } });
+      await callTool("update_persona", { edits: personaDraft });
+      await callTool("save_profile_step", { step: "persona_edit", data: { persona: personaDraft } });
       setState((current) => ({ ...current, persona: personaDraft }));
       setPersonaEditing(false);
     } catch (toolError) {
@@ -370,6 +378,7 @@ export function ProfileFormWidget() {
       return;
     }
     await persistStep("activate_matching", { persona: state.persona, ready: true });
+    await callTool("start_match_job", {});
   }
 
   function renderAgeGate() {
@@ -461,7 +470,7 @@ export function ProfileFormWidget() {
               setState((current) => ({ ...current, photo: { fileName: file.name, status: "pending" } }));
               try {
                 const uploaded = await uploadFile(file);
-                await callTool("upload_profile_photo", { fileId: uploaded.fileId, fileName: file.name, moderationStatus: "pending" });
+                await callTool("upload_profile_photo", { file: { file_id: uploaded.fileId, file_name: file.name } });
                 setState((current) => ({ ...current, photo: { fileId: uploaded.fileId, fileName: file.name, status: "pending" } }));
               } catch {
                 setState((current) => ({ ...current, photo: { fileName: file.name, status: "error" } }));

@@ -8,10 +8,9 @@ import { currentClaims } from "./context";
 export const saveProfileStepInput = {
   step: z.string().min(1),
   data: z.record(z.string(), z.unknown()),
-  idempotencyKey: z.string().min(1).optional(),
 };
 
-export async function saveProfileStep(input: { step: string; data: Record<string, unknown>; idempotencyKey?: string }): Promise<ToolResponse> {
+export async function saveProfileStep(input: { step: string; data: Record<string, unknown> }): Promise<ToolResponse> {
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);

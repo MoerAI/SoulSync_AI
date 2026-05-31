@@ -78,6 +78,10 @@ export function MatchStatusWidget({ initialJobId, pollIntervalMs = 800 }: MatchS
 
   async function pollJob(currentJob = job) {
     setError(undefined);
+    if (!currentJob.id) {
+      await retryJob();
+      return;
+    }
     try {
       const result = await callTool("get_match_job", { jobId: currentJob.id });
       setJob((previous) => normalizeJob(result, previous));
@@ -90,7 +94,7 @@ export function MatchStatusWidget({ initialJobId, pollIntervalMs = 800 }: MatchS
     setRetrying(true);
     setError(undefined);
     try {
-      const result = await callTool("start_match_job", { retryFromJobId: job.id });
+      const result = await callTool("start_match_job", {});
       const nextJob = normalizeJob(result, { status: "queued", progress: 8 });
       setJob(nextJob);
       setShowRecommendations(false);

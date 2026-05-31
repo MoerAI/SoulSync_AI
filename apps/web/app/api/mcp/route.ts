@@ -15,8 +15,10 @@ import { matchStatusResourceUri, renderMatchStatus } from "./tools/render_match_
 import { profileFormResourceUri, renderProfileForm } from "./tools/render_profile_form";
 import { recommendationsResourceUri, renderRecommendations } from "./tools/render_recommendations";
 import { runWithClaims } from "./tools/context";
+import { saveProfileConsent, saveProfileConsentInput } from "./tools/save_profile_consent";
 import { saveProfileStep, saveProfileStepInput } from "./tools/save_profile_step";
-import { startMatchJob } from "./tools/start_match_job";
+import { saveRecommendation, saveRecommendationInput } from "./tools/save_recommendation";
+import { startMatchJob, startMatchJobInput } from "./tools/start_match_job";
 import { updatePersona, updatePersonaInput } from "./tools/update_persona";
 import { uploadProfilePhoto, uploadProfilePhotoInput } from "./tools/upload_profile_photo";
 
@@ -64,6 +66,16 @@ function registerDataTools(server: McpServerLike): void {
     saveProfileStep,
   );
   server.registerTool(
+    "save_profile_consent",
+    {
+      title: "Save Profile Consent",
+      description: "Save SoulSync consent ledger entries.",
+      inputSchema: saveProfileConsentInput,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    saveProfileConsent,
+  );
+  server.registerTool(
     "generate_persona",
     {
       title: "Generate Persona",
@@ -99,7 +111,7 @@ function registerDataTools(server: McpServerLike): void {
     {
       title: "Start Match Job",
       description: "Enqueue a background SoulSync matching job.",
-      inputSchema: {},
+      inputSchema: startMatchJobInput,
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     startMatchJob,
@@ -124,6 +136,16 @@ function registerDataTools(server: McpServerLike): void {
       _meta: { ui: { resourceUri: recommendationsResourceUri }, "openai/outputTemplate": recommendationsResourceUri },
     },
     listRecommendations,
+  );
+  server.registerTool(
+    "save_recommendation",
+    {
+      title: "Save Recommendation",
+      description: "Record interest in a SoulSync recommendation.",
+      inputSchema: saveRecommendationInput,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    saveRecommendation,
   );
   server.registerTool(
     "report_profile",
@@ -237,4 +259,4 @@ type ToolConfig = {
   _meta?: Record<string, unknown>;
 };
 
-type McpServerLike = any;
+type McpServerLike = Parameters<Parameters<typeof createMcpHandler>[0]>[0];

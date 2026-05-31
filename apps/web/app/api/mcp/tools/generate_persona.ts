@@ -1,15 +1,11 @@
-import { generatePersona as coreGeneratePersona, type PersonaConsent } from "@soulsync/core/src/persona/index";
-import { serializePersona } from "@soulsync/core/src/serializers";
+import { generatePersona as coreGeneratePersona } from "@soulsync/core/src/persona/index";
+import { serializePersonaMeta, serializePersonaSummary } from "@soulsync/core/src/serializers";
 import type { Profile } from "@soulsync/core/src/types/index";
-import { z } from "zod";
-
 import { getServiceSupabase } from "../../../../lib/supabase";
 import { actorFor, ok, requireScope, rowError, type ToolResponse } from "./common";
 import { currentClaims } from "./context";
 
-export const generatePersonaInput = {
-  consent: z.union([z.boolean(), z.record(z.string(), z.unknown())]).optional(),
-};
+export const generatePersonaInput = {};
 
 type ProfileRow = {
   id: string;
@@ -27,26 +23,20 @@ type AnswerRow = {
   answer: unknown;
 };
 
-export async function generatePersona(input: { consent?: PersonaConsent } = {}): Promise<ToolResponse> {
+export async function generatePersona(): Promise<ToolResponse> {
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
   const supabase = getServiceSupabase();
   const profile = await loadProfile(actor.appUserId);
-  const persona = await coreGeneratePersona(profile, input.consent ?? true);
+  const persona = await coreGeneratePersona(profile, true);
   const { error } = await supabase.from("profiles").update({ persona_spec: persona, persona_updated_at: new Date().toISOString() }).eq("app_user_id", actor.appUserId);
 
   if (error) {
     rowError("Unable to save generated persona");
   }
 
-  return ok({ persona: serializePersona(persona) }, "Persona generated.", {
-    persona: {
-      ...serializePersona(persona),
-      allowedTalkingPoints: persona.allowedTalkingPoints,
-      forbiddenTopics: persona.forbiddenTopics,
-    },
-  });
+  return ok(serializePersonaSummary(persona), "Persona generated.", { persona: serializePersonaMeta(persona) });
 }
 
 async function loadProfile(appUserId: string): Promise<Profile> {

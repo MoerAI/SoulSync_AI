@@ -1,6 +1,7 @@
 import { actorFromSupabaseJwt, OAuthAccessTokenError, type McpActor } from "@soulsync/core/src/identity/index";
 
 import { getServiceSupabase } from "../../../lib/supabase";
+import type { ServiceClient } from "./services";
 
 export const jsonResponse = (body: unknown, status = 200): Response =>
   Response.json(body, {
@@ -20,7 +21,7 @@ export const withMobileActor = async (request: Request, handler: (actor: McpActo
   }
 };
 
-export const serviceClient = (): ReturnType<typeof getServiceSupabase> => getServiceSupabase();
+export const serviceClient = (): ServiceClient => getServiceSupabase() as ServiceClient;
 
 const supabaseJwtIdentityClient = () => ({
   async findAppUserBySupabaseUserId(supabaseUserId: string) {

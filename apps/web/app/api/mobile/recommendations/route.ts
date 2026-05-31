@@ -8,5 +8,5 @@ export const GET = (request: Request): Promise<Response> =>
     const url = new URL(request.url);
     const limit = Math.max(1, Math.min(10, Number(url.searchParams.get("limit") ?? 3)));
 
-    return jsonResponse(await listMobileRecommendations(actor, { jobId: url.searchParams.get("jobId") ?? undefined, limit }, serviceClient() as never));
+    return jsonResponse(await listMobileRecommendations(actor, { jobId: url.searchParams.get("jobId") ?? undefined, limit }, serviceClient()));
   });

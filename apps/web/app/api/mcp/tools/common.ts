@@ -1,8 +1,10 @@
 import { actorFromClaims, OAuthAccessTokenError, type McpActor, type OAuthAccessTokenClaims } from "@soulsync/core/src/identity/index";
+import type { EnforcementClient } from "@soulsync/core/src/safety/enforcement";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ToolResponse = {
   structuredContent?: Record<string, unknown>;
-  content?: Array<{ type: "text"; text: string }>;
+  content: Array<{ type: "text"; text: string }>;
   _meta?: Record<string, unknown>;
 };
 
@@ -30,6 +32,10 @@ export function rowError(message: string): never {
 
 export function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+export function asEnforcementClient(client: SupabaseClient): EnforcementClient {
+  return client as unknown as EnforcementClient;
 }
 
 export function boolValue(value: unknown): boolean {

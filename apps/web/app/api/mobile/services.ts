@@ -1,18 +1,14 @@
 import { enqueueMatchJob } from "@soulsync/core/src/jobs/enqueue";
 import { generatePersona as coreGeneratePersona, updatePersona as coreUpdatePersona, type PersonaConsent, type PersonaTalkingPoints } from "@soulsync/core/src/persona/index";
 import { blockProfile as coreBlockProfile, deleteAccount as coreDeleteAccount, reportProfile as coreReportProfile } from "@soulsync/core/src/safety/enforcement";
+import type { EnforcementClient } from "@soulsync/core/src/safety/enforcement";
+import type { SupabaseLike } from "@soulsync/core/src/jobs/pipeline";
 import { serializeBlock, serializeDeleteAccount, serializeMatchJob, serializePersona, serializePhotoUpload, serializeProfileStep, serializeRecommendations, serializeReport } from "@soulsync/core/src/serializers";
 import type { McpActor } from "@soulsync/core/src/identity/index";
 import type { PersonaSpec, Profile } from "@soulsync/core/src/types/index";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type ServiceClient = {
-  from: (table: string) => any;
-  storage?: {
-    from(bucket: string): {
-      createSignedUploadUrl?: (path: string) => Promise<{ data: { signedUrl?: string; path?: string; token?: string } | null; error: unknown }>;
-    };
-  };
-};
+export type ServiceClient = SupabaseClient;
 
 type RecommendationRow = {
   id: string;
@@ -121,7 +117,7 @@ export const createMobilePhotoUpload = async (actor: McpActor, input: { fileName
   return { ...serializePhotoUpload({ photoId: data.id }), upload: { url: signed?.data?.signedUrl ?? null, path: signed?.data?.path ?? path, token: signed?.data?.token ?? null } };
 };
 
-export const enqueueMobileMatchJob = async (actor: McpActor, client: ServiceClient): Promise<Record<string, unknown>> => serializeMatchJob({ jobId: await enqueueMatchJob({ source: "mobile", id: actor.appUserId }, client as never), status: "queued" });
+export const enqueueMobileMatchJob = async (actor: McpActor, client: ServiceClient): Promise<Record<string, unknown>> => serializeMatchJob({ jobId: await enqueueMatchJob({ source: "mobile", id: actor.appUserId }, asSupabaseLike(client)), status: "queued" });
 
 export const getMobileMatchJob = async (actor: McpActor, jobId: string, client: ServiceClient): Promise<Record<string, unknown>> => {
   const { data, error } = (await client.from("match_jobs").select("id, app_user_id, status, progress").eq("id", jobId).eq("app_user_id", actor.appUserId).single()) as { data: MatchJobRow | null; error: unknown };
@@ -145,12 +141,12 @@ export const listMobileRecommendations = async (actor: McpActor, input: { jobId?
   return serializeRecommendations(data ?? []);
 };
 
-export const reportMobileProfile = async (actor: McpActor, input: { profileId: string; reason: string }, client: ServiceClient): Promise<Record<string, unknown>> => serializeReport({ reportId: (await coreReportProfile({ reporterId: actor.appUserId, reportedId: input.profileId, reason: input.reason }, client as never)).id });
+export const reportMobileProfile = async (actor: McpActor, input: { profileId: string; reason: string }, client: ServiceClient): Promise<Record<string, unknown>> => serializeReport({ reportId: (await coreReportProfile({ reporterId: actor.appUserId, reportedId: input.profileId, reason: input.reason }, asEnforcementClient(client))).id });
 
-export const blockMobileProfile = async (actor: McpActor, input: { profileId: string }, client: ServiceClient): Promise<Record<string, unknown>> => serializeBlock({ blockId: (await coreBlockProfile({ blockerId: actor.appUserId, blockedId: input.profileId }, client as never)).id, blockedProfileId: input.profileId });
+export const blockMobileProfile = async (actor: McpActor, input: { profileId: string }, client: ServiceClient): Promise<Record<string, unknown>> => serializeBlock({ blockId: (await coreBlockProfile({ blockerId: actor.appUserId, blockedId: input.profileId }, asEnforcementClient(client))).id, blockedProfileId: input.profileId });
 
 export const deleteMobileAccount = async (actor: McpActor, client: ServiceClient): Promise<Record<string, unknown>> => {
-  await coreDeleteAccount(actor.appUserId, client as never);
+  await coreDeleteAccount(actor.appUserId, asEnforcementClient(client));
 
   return serializeDeleteAccount();
 };
@@ -198,3 +194,5 @@ const normalizeAnswer = (answer: unknown): string | number | boolean | string[] 
 };
 
 const sanitizeFileName = (fileName: string): string => fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+const asSupabaseLike = (client: ServiceClient): SupabaseLike => client as unknown as SupabaseLike;
+const asEnforcementClient = (client: ServiceClient): EnforcementClient => client as unknown as EnforcementClient;

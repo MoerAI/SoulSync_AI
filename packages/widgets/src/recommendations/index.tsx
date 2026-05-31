@@ -14,6 +14,7 @@ type JudgeSubscores = {
 };
 
 type RecommendationCard = {
+  recommendationId: string;
   candidateId: string;
   rank: number;
   overall: number;
@@ -75,9 +76,9 @@ function numberFrom(value: unknown, fallback: number) {
   return Number.isFinite(next) ? next : fallback;
 }
 
-function candidateIdFrom(item: Record<string, unknown>, rank: number) {
+function candidateIdFrom(item: Record<string, unknown>, meta: Record<string, unknown>, rank: number) {
   const candidate = asRecord(item.candidate);
-  return stringFrom(item.candidateId) ?? stringFrom(candidate?.id) ?? `candidate-${rank}`;
+  return stringFrom(item.candidateId) ?? stringFrom(meta.candidateId) ?? stringFrom(candidate?.id) ?? `candidate-${rank}`;
 }
 
 function metaForCandidate(meta: Record<string, unknown>, candidateId: string, index: number) {
@@ -138,12 +139,13 @@ export function normalizeRecommendations(result: unknown): RecommendationsSnapsh
       }
       const rank = Math.max(1, Math.trunc(numberFrom(item.rank, index + 1)));
       const candidate = asRecord(item.candidate) ?? {};
-      const candidateId = candidateIdFrom(item, rank);
-      const metaCandidate = metaForCandidate(meta, candidateId, index);
+      const metaCandidate = metaForCandidate(meta, stringFrom(item.candidateId) ?? `candidate-${rank}`, index);
+      const candidateId = candidateIdFrom(item, metaCandidate, rank);
       const judgeScore = asRecord(item.judgeScore) ?? item;
       const displayName = stringFrom(candidate.displayName) ?? stringFrom(candidate.name) ?? stringFrom(metaCandidate.displayName) ?? `추천 후보 ${rank}`;
       const isSynthetic = Boolean(item.is_synthetic ?? candidate.is_synthetic ?? metaCandidate.is_synthetic);
       const recommendation: RecommendationCard = {
+        recommendationId: stringFrom(item.id) ?? `recommendation-${rank}`,
         candidateId,
         rank,
         overall: Math.round(numberFrom(judgeScore.overall, numberFrom(item.overall, 0))),
@@ -195,17 +197,21 @@ function SubscoreBars({ recommendation }: { recommendation: RecommendationCard }
   );
 }
 
-function RecommendationCardView({ recommendation, onAction }: { recommendation: RecommendationCard; onAction: (toolName: string, args: unknown) => Promise<void> }) {
+function RecommendationCardView({ recommendation }: { recommendation: RecommendationCard }) {
   const [savingAction, setSavingAction] = useState<string>();
 
-  async function runAction(action: "save" | "block") {
+  async function runAction(action: "save" | "report" | "block") {
     setSavingAction(action);
     try {
       if (action === "save") {
-        await onAction("save_recommendation", { candidateId: recommendation.candidateId, rank: recommendation.rank, action: "interest_save" });
+        await callTool("save_recommendation", { recommendationId: recommendation.recommendationId });
         return;
       }
-      await onAction("report_or_block_candidate", { candidateId: recommendation.candidateId, rank: recommendation.rank, action: "block_report" });
+      if (action === "report") {
+        await callTool("report_profile", { candidateId: recommendation.candidateId, reason: "widget_report" });
+        return;
+      }
+      await callTool("block_profile", { candidateId: recommendation.candidateId });
     } finally {
       setSavingAction(undefined);
     }
@@ -243,8 +249,11 @@ function RecommendationCardView({ recommendation, onAction }: { recommendation: 
             <Button loading={savingAction === "save"} onClick={() => runAction("save")} size="sm" variant="secondary">
               관심 표현/저장
             </Button>
+            <Button loading={savingAction === "report"} onClick={() => runAction("report")} size="sm" variant="ghost">
+              신고
+            </Button>
             <Button loading={savingAction === "block"} onClick={() => runAction("block")} size="sm" variant="ghost">
-              차단/신고
+              차단
             </Button>
           </div>
         </div>
@@ -263,7 +272,7 @@ export function RecommendationsWidget({ initialResult }: RecommendationsWidgetPr
     setLoading(true);
     setError(undefined);
     try {
-      const result = await callTool("get_recommendations", {});
+      const result = await callTool("list_recommendations", {});
       setSnapshot(normalizeRecommendations(result));
     } catch (toolError) {
       setError(toolError instanceof Error ? toolError.message : "추천 결과를 불러오지 못했어요.");
@@ -288,10 +297,6 @@ export function RecommendationsWidget({ initialResult }: RecommendationsWidgetPr
     setWidgetState({ widget: "recommendations", count: visibleRecommendations.length });
     notifyIntrinsicHeight(document.documentElement.scrollHeight);
   }, [visibleRecommendations.length, error, loading]);
-
-  async function runAction(toolName: string, args: unknown) {
-    await callTool(toolName, args);
-  }
 
   return (
     <div className="ssw-scope ssw-rec-shell" data-widget="recommendations">
@@ -319,7 +324,7 @@ export function RecommendationsWidget({ initialResult }: RecommendationsWidgetPr
       {!error && visibleRecommendations.length > 0 ? (
         <div className="ssw-rec-list">
           {visibleRecommendations.map((recommendation) => (
-            <RecommendationCardView key={recommendation.candidateId} onAction={runAction} recommendation={recommendation} />
+            <RecommendationCardView key={recommendation.candidateId} recommendation={recommendation} />
           ))}
         </div>
       ) : null}

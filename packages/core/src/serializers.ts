@@ -19,19 +19,9 @@ export type RecommendationSerializableRow = {
 
 export type SerializedRecommendation = {
   id: string;
-  jobId: string;
-  candidateId: string;
   rank: number;
   overall: number;
-  subscores: Record<string, number>;
   summaryKo: string;
-  summary: string;
-  candidate: {
-    id: string;
-    displayName?: string;
-    ageRange?: string;
-    mbti?: string;
-  };
   is_synthetic: boolean;
 };
 
@@ -55,27 +45,18 @@ export type SerializedMatchJob = {
 
 export const serializeRecommendation = (row: RecommendationSerializableRow): SerializedRecommendation => {
   const candidate = recordValue(row.candidate) ?? {};
-  const candidateId = stringValue(row.candidate_id) ?? stringValue(row.candidateId) ?? stringValue(candidate.id) ?? "";
   const summaryKo = stringValue(row.summary_ko) ?? stringValue(row.summaryKo) ?? stringValue(row.summary) ?? "";
 
   return {
     id: row.id,
-    jobId: stringValue(row.job_id) ?? stringValue(row.jobId) ?? "",
-    candidateId,
     rank: numberValue(row.rank, 0),
     overall: numberValue(row.overall, 0),
-    subscores: safeSubscores(row.subscores),
     summaryKo,
-    summary: summaryKo,
-    candidate: {
-      id: candidateId,
-      ...(stringValue(candidate.displayName) ? { displayName: stringValue(candidate.displayName) } : {}),
-      ...(stringValue(candidate.ageRange) ? { ageRange: stringValue(candidate.ageRange) } : {}),
-      ...(stringValue(candidate.mbti) ? { mbti: stringValue(candidate.mbti) } : {}),
-    },
     is_synthetic: Boolean(row.is_synthetic ?? candidate.is_synthetic),
   };
 };
+
+export const serializeRecommendationSubscores = (row: RecommendationSerializableRow): Record<string, number> => safeSubscores(row.subscores);
 
 export const serializeRecommendations = (rows: readonly RecommendationSerializableRow[]): SerializedRecommendations => {
   const recommendations = rows.map(serializeRecommendation);
@@ -109,6 +90,17 @@ export const serializePersona = (persona: PersonaSpec | PersonaPreview): Record<
   communicationStyle: persona.communicationStyle,
   boundaries: persona.boundaries,
   is_synthetic: persona.is_synthetic,
+});
+
+export const serializePersonaSummary = (persona: PersonaSpec | PersonaPreview): { personaId: string; status: "ready" } => ({
+  personaId: persona.id,
+  status: "ready",
+});
+
+export const serializePersonaMeta = (persona: PersonaSpec | PersonaPreview): Record<string, unknown> => ({
+  ...serializePersona(persona),
+  allowedTalkingPoints: "allowedTalkingPoints" in persona ? persona.allowedTalkingPoints : undefined,
+  forbiddenTopics: "forbiddenTopics" in persona ? persona.forbiddenTopics : undefined,
 });
 
 export const serializePhotoUpload = (input: { photoId: string; status?: string }): { photoId: string; status: string } => ({

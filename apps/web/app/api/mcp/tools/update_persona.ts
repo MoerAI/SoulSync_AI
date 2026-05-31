@@ -1,5 +1,5 @@
 import { updatePersona as coreUpdatePersona, type PersonaTalkingPoints } from "@soulsync/core/src/persona/index";
-import { serializePersona } from "@soulsync/core/src/serializers";
+import { serializePersonaMeta, serializePersonaSummary } from "@soulsync/core/src/serializers";
 import type { PersonaSpec } from "@soulsync/core/src/types/index";
 import { z } from "zod";
 
@@ -8,8 +8,7 @@ import { actorFor, ok, requireScope, rowError, type ToolResponse } from "./commo
 import { currentClaims } from "./context";
 
 export const updatePersonaInput = {
-  updates: z.record(z.string(), z.unknown()),
-  idempotencyKey: z.string().min(1).optional(),
+  edits: z.record(z.string(), z.unknown()),
 };
 
 type ProfilePersonaRow = {
@@ -17,7 +16,7 @@ type ProfilePersonaRow = {
   is_synthetic: boolean | null;
 };
 
-export async function updatePersona(input: { updates: Partial<PersonaSpec> & Partial<PersonaTalkingPoints>; idempotencyKey?: string }): Promise<ToolResponse> {
+export async function updatePersona(input: { edits: Partial<PersonaSpec> & Partial<PersonaTalkingPoints> }): Promise<ToolResponse> {
   const claims = currentClaims();
   requireScope(claims, "profile.write");
   const actor = actorFor(claims);
@@ -29,18 +28,12 @@ export async function updatePersona(input: { updates: Partial<PersonaSpec> & Par
   }
 
   const original = { ...(data.persona_spec as PersonaSpec), is_synthetic: Boolean(data.is_synthetic) || Boolean((data.persona_spec as PersonaSpec).is_synthetic) };
-  const persona = coreUpdatePersona(original, input.updates);
+  const persona = coreUpdatePersona(original, input.edits);
   const { error: updateError } = await supabase.from("profiles").update({ persona_spec: persona, persona_updated_at: new Date().toISOString() }).eq("app_user_id", actor.appUserId);
 
   if (updateError) {
     rowError("Unable to update persona");
   }
 
-  return ok({ persona: serializePersona(persona) }, "Persona updated.", {
-    persona: {
-      ...persona,
-      allowedTalkingPoints: persona.allowedTalkingPoints,
-      forbiddenTopics: persona.forbiddenTopics,
-    },
-  });
+  return ok(serializePersonaSummary(persona), "Persona updated.", { persona: serializePersonaMeta(persona) });
 }

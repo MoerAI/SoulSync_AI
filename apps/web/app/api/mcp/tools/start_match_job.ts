@@ -7,6 +7,8 @@ import { getServiceSupabase } from "../../../../lib/supabase";
 import { actorFor, ok, requireScope, type ToolResponse } from "./common";
 import { currentClaims } from "./context";
 
+export const startMatchJobInput = {};
+
 type Deps = {
   enqueueMatchJob?: (actor: McpActor, client: SupabaseLike) => Promise<string>;
 };

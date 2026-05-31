@@ -7,5 +7,5 @@ export const POST = (request: Request): Promise<Response> =>
   withMobileActor(request, async (actor) => {
     const body = await readJson(request);
 
-    return jsonResponse(await saveMobileProfileStep(actor, { step: stringField(body, "step"), data: recordField(body, "data") }, serviceClient() as never));
+    return jsonResponse(await saveMobileProfileStep(actor, { step: stringField(body, "step"), data: recordField(body, "data") }, serviceClient()));
   });
