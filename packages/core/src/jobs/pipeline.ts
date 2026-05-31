@@ -2,7 +2,7 @@ import { simulateConversation as defaultSimulateConversation } from "../conversa
 import { buildProfileText, embed as defaultEmbed } from "../embeddings";
 import { DEFAULT_FRIENDLI_MODEL, FriendliClient, type FriendliLike } from "../friendli";
 import { compareJudgeScores, JUDGE_PROMPT_VERSION, judgeTranscript as defaultJudgeTranscript } from "../judge";
-import { generatePersona as defaultGeneratePersona } from "../persona";
+import { generatePersona as defaultGeneratePersona, previewPersona } from "../persona";
 import { funnel, type FunnelCandidate, type FunnelUser } from "../scoring/funnel";
 import { PersonaSpecSchema, type JudgeScore, type PersonaSpec, type Profile, type ReligionProfile, type Transcript } from "../types";
 
@@ -225,7 +225,7 @@ const runCandidate = async ({
   }
 
   try {
-    const transcript = await (deps.simulateConversation ?? ((personaA, personaB, opts) => defaultSimulateConversation(personaA as never, personaB as never, opts)))(userPersona, candidate.persona, { friendli });
+    const transcript = await (deps.simulateConversation ?? ((personaA, personaB, opts) => defaultSimulateConversation(previewPersona(personaA), previewPersona(personaB), opts)))(userPersona, candidate.persona, { friendli });
     const judgeScore = await (deps.judgeTranscript ?? defaultJudgeTranscript)({ personaA: userPersona, personaB: candidate.persona, transcript, friendli, randomizeOrder: false });
 
     await persistSimulation(client, {
