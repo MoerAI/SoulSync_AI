@@ -125,6 +125,15 @@ type CandidateOutcome = {
   judgeScore?: JudgeScore;
 };
 
+type CandidateLoadOptions = {
+  matchCount?: number;
+  filterCity?: string | null;
+  filterReligion?: string[] | null;
+};
+
+const TOP_RECOMMENDATION_LIMIT = 3;
+const FALLBACK_CANDIDATE_POOL_SIZE = 20;
+
 export const runMatchJob = async (jobId: string, deps: MatchPipelineDeps): Promise<MatchJobResult> => {
   const client = deps.client;
   const friendli = deps.friendli ?? new FriendliClient();
@@ -141,18 +150,27 @@ export const runMatchJob = async (jobId: string, deps: MatchPipelineDeps): Promi
   const profile = await loadProfile(client, job.app_user_id);
   const userPersona = await personaForProfile(profile, deps, friendli);
   const queryEmbedding = await (deps.embed ?? defaultEmbed)(buildProfileText(profileForEmbedding(profile)));
+  const user = userFor(profile);
   const candidates = await loadCandidates(client, profile, queryEmbedding, deps);
-  const funnelResult = funnel(userFor(profile), candidates);
+  let funnelResult = funnel(user, candidates);
+
+  if (funnelResult.candidates.length < TOP_RECOMMENDATION_LIMIT) {
+    const fallbackCandidates = await loadCandidates(client, profile, queryEmbedding, deps, {
+      matchCount: Math.max(deps.candidatePoolSize ?? FALLBACK_CANDIDATE_POOL_SIZE, FALLBACK_CANDIDATE_POOL_SIZE),
+      filterCity: null,
+      filterReligion: null,
+    });
+    const widenedResult = funnel(user, mergeCandidates(candidates, fallbackCandidates));
+    funnelResult = {
+      candidates: widenedResult.candidates,
+      fallbackTrace: ["candidate_pool_widened", ...widenedResult.fallbackTrace],
+    };
+  }
   const outcomes: CandidateOutcome[] = [];
 
-  for (const candidate of funnelResult.candidates.slice(0, 3)) {
+  for (const candidate of funnelResult.candidates.slice(0, TOP_RECOMMENDATION_LIMIT)) {
     if (await isCancelled(client, jobId)) {
       return cancelledResult(jobId);
-    }
-
-    if (isSyntheticFallbackCandidate(candidate)) {
-      outcomes.push({ candidate, status: { candidateId: candidate.id, status: "failed", error: "synthetic fallback placeholder is not persisted" } });
-      continue;
     }
 
     outcomes.push(await runCandidate({ client, profile, userPersona, candidate, friendli, model, deps, now }));
@@ -256,16 +274,16 @@ const loadProfile = async (client: SupabaseLike, appUserId: string): Promise<Pro
   return data;
 };
 
-const loadCandidates = async (client: SupabaseLike, profile: ProfileRow, queryEmbedding: number[], deps: MatchPipelineDeps): Promise<FunnelCandidate[]> => {
+const loadCandidates = async (client: SupabaseLike, profile: ProfileRow, queryEmbedding: number[], deps: MatchPipelineDeps, options: CandidateLoadOptions = {}): Promise<FunnelCandidate[]> => {
   const { data, error } = await client.rpc<CandidateRpcRow>("match_candidate_profiles", {
     query_user_id: profile.app_user_id,
     query_embedding: queryEmbedding,
-    match_count: deps.candidatePoolSize ?? 20,
+    match_count: options.matchCount ?? deps.candidatePoolSize ?? FALLBACK_CANDIDATE_POOL_SIZE,
     min_similarity: deps.minSimilarity ?? 0,
     filter_gender: profile.gender ?? null,
     filter_interested_in: profile.interested_in ?? [],
-    filter_city: deps.filterCity ?? profile.city ?? null,
-    filter_religion: profile.religion_type ? [profile.religion_type] : null,
+    filter_city: options.filterCity !== undefined ? options.filterCity : deps.filterCity ?? profile.city ?? null,
+    filter_religion: options.filterReligion !== undefined ? options.filterReligion : profile.religion_type ? [profile.religion_type] : null,
   });
 
   if (error || !data) {
@@ -273,6 +291,22 @@ const loadCandidates = async (client: SupabaseLike, profile: ProfileRow, queryEm
   }
 
   return data.map(candidateFromRpc).filter((candidate): candidate is FunnelCandidate => Boolean(candidate));
+};
+
+const mergeCandidates = (primary: readonly FunnelCandidate[], fallback: readonly FunnelCandidate[]): FunnelCandidate[] => {
+  const seen = new Set<string>();
+  const merged: FunnelCandidate[] = [];
+
+  for (const candidate of [...primary, ...fallback]) {
+    if (seen.has(candidate.id)) {
+      continue;
+    }
+
+    seen.add(candidate.id);
+    merged.push(candidate);
+  }
+
+  return merged;
 };
 
 const personaForProfile = async (profile: ProfileRow, deps: MatchPipelineDeps, friendli: FriendliLike): Promise<PersonaSpec> => {
@@ -408,7 +442,6 @@ const profileForEmbedding = (profile: ProfileRow): Profile => ({
 });
 
 const profileVersion = (profile: Pick<ProfileRow, "id" | "updated_at">): string => `${profile.id}:${profile.updated_at ?? "unversioned"}`;
-const isSyntheticFallbackCandidate = (candidate: FunnelCandidate): boolean => candidate.id.startsWith("synthetic-fallback-") || candidate.profileId.startsWith("profile-synthetic-fallback-");
 const transcriptTokens = (transcript: Transcript): number => transcript.turns.reduce((sum, turn) => sum + ("usage" in turn && isRecord(turn.usage) && typeof turn.usage.totalTokens === "number" ? turn.usage.totalTokens : Math.ceil(turn.content.length / 4)), 0);
 const clampIntensity = (value: number | null | undefined): 1 | 2 | 3 | 4 | 5 => (Math.min(5, Math.max(1, Math.round(value ?? 3))) as 1 | 2 | 3 | 4 | 5);
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));

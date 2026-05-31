@@ -6,6 +6,8 @@ import { enqueueMatchJob } from "./enqueue";
 import { runMatchJob, type MatchPipelineDeps, type QueryLike, type SupabaseLike } from "./pipeline";
 
 const CITY = "테스트통합시";
+const SPARSE_CITY = "테스트희소시";
+const FALLBACK_CITY = "테스트합성시";
 const ACTOR_ID = "91000000-0000-0000-0000-000000000001";
 const ACTOR_PROFILE_ID = "92000000-0000-0000-0000-000000000001";
 const CANDIDATE_IDS = [
@@ -78,6 +80,24 @@ describe("runMatchJob", () => {
     expect(failedSimulation?.status).toBe("failed");
     expect(recommendations.map((row) => row.candidate_id)).toEqual([CANDIDATE_IDS[0], CANDIDATE_IDS[2]]);
   });
+
+  test("widens sparse pools with real synthetic candidates and persists fallback recommendations", async () => {
+    const client = seedSparseClient();
+    const jobId = client.insertJob(ACTOR_ID);
+    const deps = pipelineDeps(client, { filterCity: SPARSE_CITY, candidatePoolSize: 1 });
+
+    const result = await runMatchJob(jobId, deps);
+
+    const recommendations = client.rows.recommendations.filter((row) => row.job_id === jobId);
+
+    expect(result.status).toBe("succeeded");
+    expect(result.recommendations).toHaveLength(3);
+    expect(result.recommendations.every((recommendation) => recommendation.is_synthetic)).toBe(true);
+    expect(result.fallbackTrace.length).toBeGreaterThan(0);
+    expect(recommendations).toHaveLength(3);
+    expect(recommendations.every((row) => row.is_synthetic === true)).toBe(true);
+    expect(result.candidateStatuses.every((status) => !status.candidateId.startsWith("synthetic-fallback-"))).toBe(true);
+  });
 });
 
 describe("enqueueMatchJob", () => {
@@ -131,12 +151,25 @@ const seedClient = (): FakeSupabase => {
   return client;
 };
 
-const profileRow = (id: string, appUserId: string, gender: string, interestedIn: string[], mbti: string, index: number): Record<string, unknown> => ({
+const seedSparseClient = (): FakeSupabase => {
+  const client = new FakeSupabase();
+  client.rows.app_users.push({ id: ACTOR_ID, display_name: "actor", is_synthetic: false });
+  client.rows.profiles.push(profileRow(ACTOR_PROFILE_ID, ACTOR_ID, "female", ["male"], "ENFP", 0, { city: SPARSE_CITY }));
+
+  CANDIDATE_IDS.slice(0, 3).forEach((id, index) => {
+    client.rows.app_users.push({ id, display_name: `synthetic-${index + 1}`, is_synthetic: true });
+    client.rows.profiles.push(profileRow(`92000000-0000-0000-0000-00000000001${index + 1}`, id, "male", ["female"], "INTJ", index + 1, { city: FALLBACK_CITY, isSynthetic: true }));
+  });
+
+  return client;
+};
+
+const profileRow = (id: string, appUserId: string, gender: string, interestedIn: string[], mbti: string, index: number, overrides: { city?: string; isSynthetic?: boolean } = {}): Record<string, unknown> => ({
   id,
   app_user_id: appUserId,
   gender,
   interested_in: interestedIn,
-  city: CITY,
+  city: overrides.city ?? CITY,
   district: "테스트구",
   mbti,
   religion_type: "기독교",
@@ -148,16 +181,16 @@ const profileRow = (id: string, appUserId: string, gender: string, interestedIn:
     dealbreakers: ["흡연"],
   },
   visibility: "discoverable",
-  is_synthetic: false,
+  is_synthetic: overrides.isSynthetic ?? false,
   profile_text: `테스트 프로필 ${index}`,
-  persona_spec: persona(appUserId, `Candidate ${index}`, mbti),
+  persona_spec: persona(appUserId, `Candidate ${index}`, mbti, { city: overrides.city, isSynthetic: overrides.isSynthetic }),
   updated_at: `2026-05-31T00:00:0${index}.000Z`,
 });
 
-const persona = (id: string, displayName: string, mbti: string): PersonaSpec => ({
+const persona = (id: string, displayName: string, mbti: string, overrides: { city?: string; isSynthetic?: boolean } = {}): PersonaSpec => ({
   id,
   displayName,
-  city: CITY,
+  city: overrides.city ?? CITY,
   district: "테스트구",
   mbti: mbti as PersonaSpec["mbti"],
   values: {
@@ -168,7 +201,7 @@ const persona = (id: string, displayName: string, mbti: string): PersonaSpec => 
   },
   interests: ["독서", "산책"],
   boundaries: ["개인정보는 대화하지 않기"],
-  is_synthetic: false,
+  is_synthetic: overrides.isSynthetic ?? false,
 });
 
 const transcript = (candidateAId: string, candidateBId: string): Transcript => ({

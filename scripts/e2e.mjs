@@ -76,7 +76,7 @@ async function main() {
   happyEvidence.push(`simulations: ${simulations.length}`);
 
   section(edgeEvidence, "Adversarial edge battery");
-  await runFallbackEdges(core);
+  await runFallbackEdges(service, pipelineClient, core);
   await runInvalidJudgeJsonEdge(service, pipelineClient, core);
   await runFriendliBackoffEdge(core);
   await runPromptInjectionEdge(core);
@@ -171,21 +171,35 @@ async function createHappyPathSyntheticCandidates(service) {
   }
 }
 
-async function runFallbackEdges(core) {
-  const user = {
-    id: "fallback-user",
-    gender: "female",
-    interested_in: ["male"],
-    mbti: "ENFP",
-    religion: { type: "기독교", intensity: 2 },
-    values: fixture.values,
-    location: { city: "서울", district: "강남구" },
-  };
+async function runFallbackEdges(service, client, core) {
   for (const count of [0, 1, 2]) {
-    const result = core.funnel(user, Array.from({ length: count }, (_, index) => fallbackCandidate(index)));
-    assert(result.candidates.length === 3, `${count}-candidate fallback returns top-3 with supplements`);
-    assert(result.fallbackTrace.includes("synthetic_supplemented"), `${count}-candidate fallback trace includes synthetic_supplemented`);
-    edgeEvidence.push(`${count}-candidate fallback trace: ${JSON.stringify(result.fallbackTrace)}`);
+    const actor = await createEdgeUser(service, 100 + count, { city: `희소${count}시`, religionType: "기독교", gender: "female", interestedIn: ["male"] });
+    for (let index = 0; index < count; index += 1) {
+      const strictCandidate = await createEdgeUser(service, 110 + count * 10 + index, { city: `희소${count}시`, religionType: "기독교", gender: "male", interestedIn: ["female"], synthetic: true });
+      await upsertEmbedding(strictCandidate.profileId, vectorLiteral(0.97 - index * 0.01));
+    }
+    for (let index = 0; index < 3; index += 1) {
+      const fallbackCandidate = await createEdgeUser(service, 150 + count * 10 + index, { city: `합성${count}시`, religionType: "기독교", gender: "male", interestedIn: ["female"], synthetic: true });
+      await upsertEmbedding(fallbackCandidate.profileId, vectorLiteral(0.93 - index * 0.01));
+    }
+
+    const jobId = await core.enqueueMatchJob({ source: "mcp", id: actor.appUserId }, client);
+    const result = await core.runMatchJob(jobId, {
+      client,
+      friendli: fullFlowFriendli(core.MockFriendli),
+      embed: async () => [1, ...Array.from({ length: 383 }, () => 0)],
+      filterCity: `희소${count}시`,
+      candidatePoolSize: count,
+      now: () => new Date(now),
+    });
+    const recommendations = await fetchRecommendations(service, jobId, actor.appUserId);
+    assert(result.status === "succeeded", `${count}-candidate sparse fallback job succeeds`);
+    assert(result.fallbackTrace.includes("candidate_pool_widened"), `${count}-candidate fallback trace records candidate pool widening`);
+    assert(recommendations.length > 0, `${count}-candidate sparse fallback persists recommendations`);
+    assert(recommendations.length <= 3, `${count}-candidate sparse fallback caps recommendations at 3`);
+    assert(recommendations.every((row) => row.is_synthetic === true), `${count}-candidate sparse fallback recommendations are synthetic`);
+    assert(result.candidateStatuses.every((status) => !String(status.candidateId).startsWith("synthetic-fallback-")), `${count}-candidate sparse fallback uses real candidate ids`);
+    edgeEvidence.push(`${count}-candidate sparse fallback trace: ${JSON.stringify(result.fallbackTrace)}, recommendations: ${recommendations.length}`);
   }
 }
 
@@ -323,16 +337,6 @@ function judgeScore(overall) {
     rationale: "Deterministic e2e judge fixture.",
     judgePromptVersion: "judge-rubric-2026-05-31",
     judgeSchemaVersion: "judge-score-v1",
-  };
-}
-
-function fallbackCandidate(index) {
-  return {
-    id: `fallback-real-${index}`,
-    profileId: `fallback-profile-${index}`,
-    gender: "male",
-    interested_in: ["female"],
-    persona: { id: `fallback-persona-${index}`, displayName: `Fallback ${index}`, city: "서울", district: "강남구", mbti: "INTJ", values: fixture.values, interests: ["독서"], boundaries: [], is_synthetic: true },
   };
 }
 

@@ -96,11 +96,6 @@ export const funnel = (user: FunnelUser, candidates: readonly FunnelCandidate[],
     appendTrace(fallbackTrace, "location_widened_to_any");
   }
 
-  if (selected.length < TOP_LIMIT) {
-    selected = supplementSynthetic(user, selected, TOP_LIMIT - selected.length);
-    appendTrace(fallbackTrace, "synthetic_supplemented");
-  }
-
   return { candidates: selected.slice(0, TOP_LIMIT).map(({ candidate }) => candidate), fallbackTrace };
 };
 
@@ -200,42 +195,6 @@ const orientationMatches = (user: FunnelUser, candidate: FunnelCandidate): boole
   includesGender(user.interested_in, candidate.gender) && includesGender(candidate.interested_in, user.gender);
 
 const includesGender = (interests: readonly MatchGender[], gender: MatchGender): boolean => interests.includes(gender) || interests.includes("any") || interests.includes("all");
-
-const supplementSynthetic = (user: FunnelUser, selected: readonly ScoredCandidate[], count: number): ScoredCandidate[] => {
-  const existing = new Set(selected.map(({ candidate }) => candidate.id));
-  const syntheticGender = user.interested_in.find((gender) => gender !== "any" && gender !== "all") ?? "synthetic_match";
-  const supplements = Array.from({ length: count }, (_, index) => {
-    const sequence = index + 1;
-    const id = `synthetic-fallback-${sequence}`;
-    const candidate: FunnelCandidate = {
-      id,
-      profileId: `profile-${id}`,
-      gender: syntheticGender,
-      interested_in: [user.gender],
-      persona: {
-        id: `persona-${id}`,
-        displayName: `SoulSync fallback ${sequence}`,
-        city: user.location?.city,
-        district: user.location?.district,
-        mbti: user.mbti,
-        values: {
-          religion: user.religion,
-          familyValues: [],
-          lifePriorities: [],
-          dealbreakers: [],
-        },
-        interests: [],
-        boundaries: ["synthetic fallback profile"],
-        is_synthetic: true,
-      },
-      score: Math.round((45 - sequence) * 100) / 100,
-    };
-
-    return { candidate, score: (candidate.score ?? 0) / 100 };
-  }).filter(({ candidate }) => !existing.has(candidate.id));
-
-  return [...selected, ...supplements].sort((a, b) => b.score - a.score || a.candidate.id.localeCompare(b.candidate.id));
-};
 
 const appendTrace = (trace: string[], step: string): void => {
   if (!trace.includes(step)) {

@@ -13,6 +13,7 @@ type CandidateOverrides = Partial<Omit<FunnelCandidate, "persona">> & {
   district?: string;
   religion?: ReligionProfile;
   values?: Partial<ValuesProfile>;
+  is_synthetic?: boolean;
 };
 
 const user: FunnelUser = {
@@ -50,7 +51,7 @@ const candidate = (
     district: overrides.district ?? "강남구",
     interests: [],
     boundaries: [],
-    is_synthetic: false,
+    is_synthetic: overrides.is_synthetic ?? false,
   },
   gender: overrides.gender ?? "male",
   interested_in: overrides.interested_in ?? ["female"],
@@ -81,25 +82,38 @@ describe("funnel", () => {
     expect(result.fallbackTrace).toEqual([]);
   });
 
-  test("relaxes sparse pools and clearly labels synthetic fillers", () => {
+  test("relaxes sparse pools without manufacturing placeholder candidates", () => {
     const result = funnel(
       user,
       [candidate("strict-only"), candidate("needs-relax", { mbti: "ESTJ", city: "경기", district: "성남시", religion: { type: "불교", intensity: 5 } })],
       { mbtiThreshold: 0.9 },
     );
 
-    expect(result.candidates).toHaveLength(3);
+    expect(result.candidates).toHaveLength(2);
     expect(result.fallbackTrace).toContain("mbti_relaxed");
-    expect(result.fallbackTrace).toContain("synthetic_supplemented");
     expect(result.candidates.some((item) => item.id === "needs-relax")).toBe(true);
-    expect(result.candidates.filter((item) => item.persona.is_synthetic).length).toBeGreaterThan(0);
+    expect(result.candidates.every((item) => !item.id.startsWith("synthetic-fallback-"))).toBe(true);
+  });
+
+  test("ranks injected synthetic fallback candidates from the supplied pool", () => {
+    const candidates = [
+      candidate("strict-only"),
+      candidate("synthetic-1", { city: "경기", district: "성남시", is_synthetic: true }),
+      candidate("synthetic-2", { city: "인천", district: "연수구", is_synthetic: true }),
+    ];
+
+    const result = funnel(user, candidates, { mbtiThreshold: 0.9 });
+
+    expect(result.candidates).toHaveLength(3);
+    expect(result.candidates.filter((item) => item.persona.is_synthetic)).toHaveLength(2);
+    expect(result.candidates.every((item) => candidates.some((input) => input.id === item.id))).toBe(true);
+    expect(result.candidates.every((item) => !item.id.startsWith("synthetic-fallback-") && !item.profileId.startsWith("profile-synthetic-fallback-"))).toBe(true);
   });
 
   test("never returns wrong-orientation candidates, even as fallback pressure increases", () => {
     const result = funnel(user, [candidate("wrong", { gender: "female", interested_in: ["male"] })], { mbtiThreshold: 0.95 });
 
-    expect(result.candidates).toHaveLength(3);
-    expect(result.candidates.every((item) => item.gender === "male" && item.interested_in.includes("female"))).toBe(true);
+    expect(result.candidates).toHaveLength(0);
     expect(result.candidates.every((item) => item.id !== "wrong")).toBe(true);
   });
 });
